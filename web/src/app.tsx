@@ -10,11 +10,7 @@ import { Session } from "./features/sessions/sessionApi";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { ProfilePage } from "./features/profile/ProfilePage";
 import { MyBookings } from "./features/bookings/MyBookings";
-import { PackagesPage } from "./features/packages/PackagesPage";
-import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
-import { ReferralSection } from "./features/referral/ReferralSection";
-
-type View = "sessions" | "bookings" | "packages" | "subscriptions" | "referral" | "profile" | "admin";
+type View = "sessions" | "bookings" | "profile" | "admin";
 
 function Navbar({
   user,
@@ -32,9 +28,6 @@ function Navbar({
   const navItems: { key: View; label: string; adminOnly?: boolean }[] = [
     { key: "sessions", label: "Sessions" },
     { key: "bookings", label: "My Bookings" },
-    { key: "packages", label: "Packages" },
-    { key: "subscriptions", label: "Recurring" },
-    { key: "referral", label: "Referral" },
     { key: "admin", label: "Admin", adminOnly: true },
   ];
 
@@ -251,12 +244,6 @@ export function App() {
           <AdminDashboard isAdmin={user.isAdmin} token={token} />
         ) : activeView === "bookings" ? (
           <MyBookings token={token} />
-        ) : activeView === "packages" ? (
-          <PackagesPage token={token} />
-        ) : activeView === "subscriptions" ? (
-          <SubscriptionsPage token={token} />
-        ) : activeView === "referral" ? (
-          <ReferralSection token={token} />
         ) : activeView === "profile" ? (
           <ProfilePage
             user={user}
