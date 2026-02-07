@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { requestOtp, verifyOtp, googleAuth, User } from "../../lib/api";
 import { GoogleLogin, CredentialResponse } from "@react-oauth/google";
 import PhoneInput from "react-phone-number-input";
+import flags from "react-phone-number-input/flags";
 import "react-phone-number-input/style.css";
 
 type Props = {
@@ -70,7 +71,7 @@ export function OtpLogin({ onAuthed }: Props) {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-deep px-4">
+    <div className="min-h-screen flex items-center justify-center bg-[#4f1f4f] px-4">
       <div className="w-full max-w-md">
         {/* Brand header */}
         <div className="text-center mb-8">
@@ -143,6 +144,7 @@ export function OtpLogin({ onAuthed }: Props) {
                 <PhoneInput
                   international
                   defaultCountry="IN"
+                  flags={flags}
                   value={phone}
                   onChange={(value) => setPhone(value)}
                   className="phone-input-field w-full px-4 py-3 rounded-xl border border-warm-300 bg-warm-50/50 text-charcoal focus-within:ring-2 focus-within:ring-brand-400/40 focus-within:border-brand-400 transition"

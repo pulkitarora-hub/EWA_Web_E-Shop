@@ -432,7 +432,45 @@ app.get(
   }
 );
 
+// Auto-seed sessions if the table is empty (runs once on startup)
+async function autoSeed() {
+  const count = await prisma.session.count();
+  if (count === 0) {
+    console.log("No sessions found — seeding default sessions...");
+    await prisma.session.createMany({
+      data: [
+        {
+          title: "Individual Therapy Session",
+          host: "Avadhi Sharma",
+          startTime: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000),
+          price: 2500,
+          currency: "INR",
+          tidycalUrl: "https://tidycal.com/avadhisharma",
+        },
+        {
+          title: "Couple Counselling Session",
+          host: "Avadhi Sharma",
+          startTime: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000),
+          price: 3500,
+          currency: "INR",
+          tidycalUrl: "https://tidycal.com/avadhisharma",
+        },
+        {
+          title: "Adulting & Personal Growth",
+          host: "Avadhi Sharma",
+          startTime: new Date(Date.now() + 14 * 24 * 60 * 60 * 1000),
+          price: 2000,
+          currency: "INR",
+          tidycalUrl: "https://tidycal.com/avadhisharma",
+        },
+      ],
+    });
+    console.log("Sessions seeded successfully.");
+  }
+}
+
 const port = Number(process.env.PORT || 4000);
 app.listen(port, () => {
   console.log(`API running on http://localhost:${port}`);
+  autoSeed().catch((err) => console.error("Auto-seed failed:", err));
 });

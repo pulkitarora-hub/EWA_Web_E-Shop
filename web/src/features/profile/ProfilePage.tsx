@@ -1,6 +1,7 @@
 import React, { useState } from "react";
 import { updateMe, User } from "../../lib/api";
 import PhoneInput from "react-phone-number-input";
+import flags from "react-phone-number-input/flags";
 import "react-phone-number-input/style.css";
 
 type Props = {
@@ -163,6 +164,7 @@ export function ProfilePage({ user, token, onUpdated }: Props) {
             <PhoneInput
               international
               defaultCountry="IN"
+              flags={flags}
               value={phone}
               onChange={(value) => setPhone(value)}
               className="phone-input-field w-full px-4 py-3 rounded-xl border border-warm-300 bg-warm-50/50 text-charcoal focus-within:ring-2 focus-within:ring-brand-400/40 focus-within:border-brand-400 transition"
