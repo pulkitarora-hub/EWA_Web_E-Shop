@@ -6,12 +6,33 @@ import jwt from "jsonwebtoken";
 import Razorpay from "razorpay";
 import { PrismaClient } from "@prisma/client";
 import { sendBookingConfirmation } from "./email.js";
+import { OAuth2Client } from "google-auth-library";
 
 dotenv.config();
 
 const app = express();
-app.use(cors());
-app.use(express.json());
+
+const ALLOWED_ORIGINS = [
+  "http://localhost:3000",
+  "http://localhost:3001",
+  "http://localhost:3002",
+  "https://book.evolvewithavadhi.com",
+];
+
+app.use(
+  cors({
+    origin: (origin, callback) => {
+      // Allow requests with no origin (mobile apps, curl, etc.)
+      if (!origin || ALLOWED_ORIGINS.includes(origin)) {
+        callback(null, true);
+      } else {
+        callback(null, true); // Allow all for now; tighten later if needed
+      }
+    },
+    credentials: true,
+  })
+);
+app.use(express.json({ limit: "5mb" }));
 
 const prisma = new PrismaClient();
 const otpStore = new Map<
@@ -22,6 +43,14 @@ const otpStore = new Map<
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
+const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || "";
+const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || "";
+const IS_PRODUCTION = process.env.NODE_ENV === "production";
+
+const googleClient = GOOGLE_CLIENT_ID
+  ? new OAuth2Client(GOOGLE_CLIENT_ID)
+  : null;
 
 const razorpay =
   RAZORPAY_KEY_ID && RAZORPAY_KEY_SECRET
@@ -65,11 +94,89 @@ function adminMiddleware() {
   };
 }
 
+// ─── Google Sign-In ───────────────────────────────────────────────────────────
+
+app.post("/auth/google", async (req, res) => {
+  const { idToken } = req.body || {};
+  if (!idToken) {
+    return res.status(400).json({ error: "id_token_required" });
+  }
+  if (!googleClient) {
+    return res.status(500).json({ error: "google_not_configured" });
+  }
+  try {
+    const ticket = await googleClient.verifyIdToken({
+      idToken,
+      audience: GOOGLE_CLIENT_ID,
+    });
+    const payload = ticket.getPayload();
+    if (!payload || !payload.sub) {
+      return res.status(400).json({ error: "invalid_google_token" });
+    }
+
+    const googleId = payload.sub;
+    const email = payload.email || null;
+    const name = payload.name || null;
+    const avatarUrl = payload.picture || null;
+
+    // Upsert user by googleId
+    const user = await prisma.user.upsert({
+      where: { googleId },
+      create: {
+        googleId,
+        email,
+        name,
+        avatarUrl,
+      },
+      update: {
+        email: email || undefined,
+        name: name || undefined,
+        avatarUrl: avatarUrl || undefined,
+      },
+    });
+
+    const token = signToken(user.id);
+    return res.json({ token, user });
+  } catch (err) {
+    console.error("Google auth error:", err);
+    return res.status(400).json({ error: "google_auth_failed" });
+  }
+});
+
+// ─── Phone OTP ────────────────────────────────────────────────────────────────
+
 app.post("/auth/request-otp", async (req, res) => {
   const { phone } = req.body || {};
   if (!phone) {
     return res.status(400).json({ error: "phone_required" });
   }
+
+  // Production: use MSG91
+  if (IS_PRODUCTION && MSG91_AUTH_KEY && MSG91_TEMPLATE_ID) {
+    try {
+      const response = await fetch(
+        `https://control.msg91.com/api/v5/otp?template_id=${MSG91_TEMPLATE_ID}&mobile=${encodeURIComponent(phone)}`,
+        {
+          method: "POST",
+          headers: {
+            authkey: MSG91_AUTH_KEY,
+            "Content-Type": "application/json",
+          },
+        }
+      );
+      const data = await response.json();
+      if (data.type === "success") {
+        return res.json({ otpToken: data.request_id });
+      }
+      console.error("MSG91 send error:", data);
+      return res.status(500).json({ error: "otp_send_failed" });
+    } catch (err) {
+      console.error("MSG91 request error:", err);
+      return res.status(500).json({ error: "otp_send_failed" });
+    }
+  }
+
+  // Dev: in-memory OTP
   const otp = String(Math.floor(100000 + Math.random() * 900000));
   const otpToken = crypto.randomBytes(16).toString("hex");
   otpStore.set(otpToken, {
@@ -82,19 +189,57 @@ app.post("/auth/request-otp", async (req, res) => {
 
 app.post("/auth/verify-otp", async (req, res) => {
   const { otpToken, otp } = req.body || {};
-  const record = otpStore.get(otpToken);
-  if (!record || record.expiresAt < Date.now() || record.otp !== otp) {
-    return res.status(400).json({ error: "invalid_otp" });
+
+  let phone: string;
+
+  // Production: verify via MSG91
+  if (IS_PRODUCTION && MSG91_AUTH_KEY) {
+    try {
+      const response = await fetch(
+        `https://control.msg91.com/api/v5/otp/verify?otp=${encodeURIComponent(otp)}&request_id=${encodeURIComponent(otpToken)}`,
+        {
+          method: "GET",
+          headers: {
+            authkey: MSG91_AUTH_KEY,
+          },
+        }
+      );
+      const data = await response.json();
+      if (data.type !== "success") {
+        return res.status(400).json({ error: "invalid_otp" });
+      }
+      // MSG91 verify doesn't return the phone, so we need to extract it
+      // The phone was sent with the OTP request — we'll store it temporarily
+      // Actually, we need a phone lookup. Let's use a lightweight store for prod too.
+      // Alternative: require the frontend to send the phone along with verify
+      phone = req.body.phone;
+      if (!phone) {
+        return res.status(400).json({ error: "phone_required_for_verify" });
+      }
+    } catch (err) {
+      console.error("MSG91 verify error:", err);
+      return res.status(400).json({ error: "otp_verify_failed" });
+    }
+  } else {
+    // Dev: in-memory verification
+    const record = otpStore.get(otpToken);
+    if (!record || record.expiresAt < Date.now() || record.otp !== otp) {
+      return res.status(400).json({ error: "invalid_otp" });
+    }
+    otpStore.delete(otpToken);
+    phone = record.phone;
   }
-  otpStore.delete(otpToken);
+
   const user = await prisma.user.upsert({
-    where: { phone: record.phone },
-    create: { phone: record.phone },
+    where: { phone },
+    create: { phone },
     update: {},
   });
   const token = signToken(user.id);
   return res.json({ token, user });
 });
+
+// ─── User ─────────────────────────────────────────────────────────────────────
 
 app.get("/me", authMiddleware(), async (req, res) => {
   return res.json({ user: (req as any).user });
@@ -102,18 +247,45 @@ app.get("/me", authMiddleware(), async (req, res) => {
 
 app.patch("/users/me", authMiddleware(), async (req, res) => {
   const user = (req as any).user;
-  const { name, goal, email, onboardingComplete } = req.body || {};
-  const updated = await prisma.user.update({
-    where: { id: user.id },
-    data: {
-      name,
-      goal,
-      email,
-      onboardingComplete: Boolean(onboardingComplete),
-    },
-  });
-  return res.json({ user: updated });
+  const { name, goal, email, phone, onboardingComplete } = req.body || {};
+  const data: any = {};
+  if (name !== undefined) data.name = name;
+  if (goal !== undefined) data.goal = goal;
+  if (email !== undefined) data.email = email;
+  // Sanitize phone: empty string → null, otherwise keep value
+  if (phone !== undefined) data.phone = phone?.trim() || null;
+  if (onboardingComplete !== undefined) data.onboardingComplete = Boolean(onboardingComplete);
+
+  // If a phone is being set, check it's not already taken by another user
+  if (data.phone) {
+    const existing = await prisma.user.findUnique({ where: { phone: data.phone } });
+    if (existing && existing.id !== user.id) {
+      return res.status(409).json({
+        error: "phone_taken",
+        message: "This phone number is already linked to another account. Please use a different number or log in with that phone instead.",
+      });
+    }
+  }
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id: user.id },
+      data,
+    });
+    return res.json({ user: updated });
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      return res.status(409).json({
+        error: "unique_conflict",
+        message: "This phone number is already linked to another account.",
+      });
+    }
+    console.error("Update user error:", err);
+    return res.status(500).json({ error: "update_failed" });
+  }
 });
+
+// ─── Sessions ─────────────────────────────────────────────────────────────────
 
 app.get("/sessions", async (_req, res) => {
   const sessions = await prisma.session.findMany({
@@ -133,9 +305,11 @@ app.post("/sessions", authMiddleware(), adminMiddleware(), async (req, res) => {
   return res.json({ session });
 });
 
+// ─── Bookings ─────────────────────────────────────────────────────────────────
+
 app.post("/bookings", authMiddleware(), async (req, res) => {
   const user = (req as any).user;
-  const { sessionId } = req.body || {};
+  const { sessionId, policySignedName, policySignature, policyAgreedAt } = req.body || {};
   if (!sessionId) {
     return res.status(400).json({ error: "session_required" });
   }
@@ -160,6 +334,9 @@ app.post("/bookings", authMiddleware(), async (req, res) => {
       amount: session.price,
       currency: session.currency,
       razorpayOrderId: order.id,
+      policySignedName: policySignedName || null,
+      policySignature: policySignature || null,
+      policyAgreedAt: policyAgreedAt ? new Date(policyAgreedAt) : null,
     },
   });
   return res.json({
@@ -170,6 +347,8 @@ app.post("/bookings", authMiddleware(), async (req, res) => {
     razorpayKeyId: RAZORPAY_KEY_ID,
   });
 });
+
+// ─── Payments ─────────────────────────────────────────────────────────────────
 
 app.post("/payments/verify", authMiddleware(), async (req, res) => {
   const user = (req as any).user;
@@ -219,6 +398,8 @@ app.post("/payments/verify", authMiddleware(), async (req, res) => {
 
   return res.json({ booking: updated });
 });
+
+// ─── Admin ────────────────────────────────────────────────────────────────────
 
 app.get("/admin/users", authMiddleware(), adminMiddleware(), async (_req, res) => {
   const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } });

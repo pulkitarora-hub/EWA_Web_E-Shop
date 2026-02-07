@@ -3,7 +3,9 @@ const API_BASE =
 
 export type User = {
   id: string;
-  phone: string;
+  phone?: string | null;
+  googleId?: string | null;
+  avatarUrl?: string | null;
   email?: string | null;
   name?: string | null;
   goal?: string | null;
@@ -38,17 +40,24 @@ async function request<T>(path: string, options: RequestInit = {}) {
   return (await res.json()) as T;
 }
 
+export async function googleAuth(idToken: string) {
+  return request<{ token: string; user: User }>("/auth/google", {
+    method: "POST",
+    body: JSON.stringify({ idToken }),
+  });
+}
+
 export async function requestOtp(phone: string) {
-  return request<{ otpToken: string; otp: string }>("/auth/request-otp", {
+  return request<{ otpToken: string; otp?: string }>("/auth/request-otp", {
     method: "POST",
     body: JSON.stringify({ phone }),
   });
 }
 
-export async function verifyOtp(otpToken: string, otp: string) {
+export async function verifyOtp(otpToken: string, otp: string, phone?: string) {
   return request<{ token: string; user: User }>("/auth/verify-otp", {
     method: "POST",
-    body: JSON.stringify({ otpToken, otp }),
+    body: JSON.stringify({ otpToken, otp, phone }),
   });
 }
 
@@ -60,7 +69,7 @@ export async function getMe(token: string) {
 
 export async function updateMe(
   token: string,
-  data: { name: string; goal: string; email?: string; onboardingComplete: boolean }
+  data: { name?: string; goal?: string; email?: string; phone?: string; onboardingComplete?: boolean }
 ) {
   return request<{ user: User }>("/users/me", {
     method: "PATCH",
@@ -73,7 +82,15 @@ export async function fetchSessions() {
   return request<{ sessions: Session[] }>("/sessions");
 }
 
-export async function createBooking(token: string, sessionId: string) {
+export async function createBooking(
+  token: string,
+  sessionId: string,
+  policyData?: {
+    policySignedName: string;
+    policySignature: string;
+    policyAgreedAt: string;
+  }
+) {
   return request<{
     bookingId: string;
     orderId: string;
@@ -83,7 +100,7 @@ export async function createBooking(token: string, sessionId: string) {
   }>("/bookings", {
     method: "POST",
     headers: authHeaders(token),
-    body: JSON.stringify({ sessionId }),
+    body: JSON.stringify({ sessionId, ...policyData }),
   });
 }
 

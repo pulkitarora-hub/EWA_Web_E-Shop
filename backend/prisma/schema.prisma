@@ -9,7 +9,9 @@ datasource db {
 
 model User {
   id                  String   @id @default(uuid())
-  phone               String   @unique
+  phone               String?  @unique
+  googleId            String?  @unique
+  avatarUrl           String?
   email               String?
   name                String?
   goal                String?
@@ -34,18 +36,21 @@ model Session {
 }
 
 model Booking {
-  id              String   @id @default(uuid())
-  userId          String
-  sessionId       String
-  status          String
-  amount          Int
-  currency        String
-  razorpayOrderId String
-  paidAt          DateTime?
-  user            User     @relation(fields: [userId], references: [id])
-  session         Session  @relation(fields: [sessionId], references: [id])
-  payment         Payment?
-  createdAt       DateTime @default(now())
+  id               String    @id @default(uuid())
+  userId           String
+  sessionId        String
+  status           String
+  amount           Int
+  currency         String
+  razorpayOrderId  String
+  paidAt           DateTime?
+  policySignedName String?
+  policySignature  String?
+  policyAgreedAt   DateTime?
+  user             User      @relation(fields: [userId], references: [id])
+  session          Session   @relation(fields: [sessionId], references: [id])
+  payment          Payment?
+  createdAt        DateTime  @default(now())
 }
 
 model Payment {
