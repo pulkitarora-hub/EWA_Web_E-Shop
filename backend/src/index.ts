@@ -286,6 +286,76 @@ app.patch("/users/me", authMiddleware(), async (req, res) => {
   }
 });
 
+// ─── Referral Code ───────────────────────────────────────────────────────────
+
+function generateReferralCode(name?: string | null): string {
+  const prefix = (name || "EWA")
+    .replace(/[^a-zA-Z]/g, "")
+    .substring(0, 4)
+    .toUpperCase();
+  const suffix = crypto.randomBytes(3).toString("hex").toUpperCase();
+  return `${prefix}${suffix}`;
+}
+
+app.get("/my-referral-code", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  if (user.referralCode) {
+    const referrals = await prisma.referral.findMany({
+      where: { referrerId: user.id },
+      include: { referee: { select: { name: true, createdAt: true } } },
+    });
+    return res.json({ referralCode: user.referralCode, referrals });
+  }
+  // Generate one
+  let code = generateReferralCode(user.name);
+  let attempts = 0;
+  while (attempts < 5) {
+    const exists = await prisma.user.findUnique({ where: { referralCode: code } });
+    if (!exists) break;
+    code = generateReferralCode(user.name);
+    attempts++;
+  }
+  const updated = await prisma.user.update({
+    where: { id: user.id },
+    data: { referralCode: code },
+  });
+  return res.json({ referralCode: updated.referralCode, referrals: [] });
+});
+
+app.post("/referral/apply", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { code } = req.body || {};
+  if (!code) return res.status(400).json({ error: "code_required" });
+
+  if (user.referredByCode) {
+    return res.status(400).json({ error: "already_referred", message: "You have already applied a referral code." });
+  }
+
+  const referrer = await prisma.user.findUnique({ where: { referralCode: code } });
+  if (!referrer) {
+    return res.status(404).json({ error: "invalid_code", message: "Referral code not found." });
+  }
+  if (referrer.id === user.id) {
+    return res.status(400).json({ error: "self_referral", message: "You cannot use your own referral code." });
+  }
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: { referredByCode: code },
+  });
+
+  await prisma.referral.create({
+    data: {
+      referrerId: referrer.id,
+      refereeId: user.id,
+      status: "completed",
+      discountPct: 10,
+    },
+  });
+
+  return res.json({ message: "Referral code applied! You and your referrer each get 10% off your next booking." });
+});
+
 // ─── Sessions ─────────────────────────────────────────────────────────────────
 
 app.get("/sessions", async (_req, res) => {
@@ -310,40 +380,183 @@ app.post("/sessions", authMiddleware(), adminMiddleware(), async (req, res) => {
 
 app.post("/bookings", authMiddleware(), async (req, res) => {
   const user = (req as any).user;
-  const { sessionId, policySignedName, policySignature, policyAgreedAt } = req.body || {};
+  const {
+    sessionId,
+    promoCode,
+    useCredit,
+    policySignedName,
+    policySignature,
+    policyAgreedAt,
+  } = req.body || {};
+
   if (!sessionId) {
     return res.status(400).json({ error: "session_required" });
   }
-  if (!razorpay) {
-    return res.status(400).json({ error: "razorpay_not_configured" });
-  }
+
   const session = await prisma.session.findUnique({ where: { id: sessionId } });
   if (!session) {
     return res.status(404).json({ error: "session_not_found" });
   }
+
+  let finalAmount = session.price;
+  let promoCodeId: string | null = null;
+  let promoDiscount = 0;
+  let referralDiscount = 0;
+
+  // ── Apply promo code ──
+  if (promoCode) {
+    const promo = await prisma.promoCode.findUnique({ where: { code: promoCode } });
+    if (!promo || !promo.active) {
+      return res.status(400).json({ error: "invalid_promo", message: "Promo code is invalid or inactive." });
+    }
+    if (promo.expiresAt && promo.expiresAt < new Date()) {
+      return res.status(400).json({ error: "promo_expired", message: "This promo code has expired." });
+    }
+    if (promo.maxUses && promo.usedCount >= promo.maxUses) {
+      return res.status(400).json({ error: "promo_limit", message: "This promo code has reached its usage limit." });
+    }
+    if (promo.minAmount && session.price < promo.minAmount) {
+      return res.status(400).json({ error: "promo_min_amount", message: `Minimum amount for this code is ${promo.minAmount}.` });
+    }
+    // Check if user already used this promo
+    const used = await prisma.promoUsage.findFirst({ where: { promoCodeId: promo.id, userId: user.id } });
+    if (used) {
+      return res.status(400).json({ error: "promo_already_used", message: "You have already used this promo code." });
+    }
+
+    promoCodeId = promo.id;
+    promoDiscount =
+      promo.type === "percentage"
+        ? Math.round((session.price * promo.value) / 100)
+        : promo.value;
+    promoDiscount = Math.min(promoDiscount, finalAmount);
+    finalAmount -= promoDiscount;
+  }
+
+  // ── Apply referral discount ──
+  if (!promoCode && user.referredByCode) {
+    const referral = await prisma.referral.findFirst({
+      where: { refereeId: user.id, refereeUsed: false },
+    });
+    if (referral) {
+      referralDiscount = Math.round((finalAmount * referral.discountPct) / 100);
+      finalAmount -= referralDiscount;
+      await prisma.referral.update({
+        where: { id: referral.id },
+        data: { refereeUsed: true },
+      });
+      // Also give the referrer their discount
+      const referrerReferral = await prisma.referral.findFirst({
+        where: { referrerId: referral.referrerId, refereeId: user.id, referrerUsed: false },
+      });
+      if (referrerReferral) {
+        await prisma.referral.update({
+          where: { id: referrerReferral.id },
+          data: { referrerUsed: false }, // keep available for referrer's next booking
+        });
+      }
+    }
+  }
+
+  finalAmount = Math.max(finalAmount, 0);
+
+  // ── Credit-based booking ──
+  if (useCredit) {
+    // Find an active package with remaining credits
+    const allActive = await prisma.userPackage.findMany({
+      where: { userId: user.id, status: "active" },
+      orderBy: { createdAt: "asc" },
+    });
+    const pkg = allActive.find((p) => p.creditsUsed < p.creditsTotal) || null;
+    if (!pkg) {
+      return res.status(400).json({ error: "no_credits", message: "You have no session credits remaining." });
+    }
+
+    const booking = await prisma.booking.create({
+      data: {
+        userId: user.id,
+        sessionId: session.id,
+        status: "paid",
+        amount: 0,
+        currency: session.currency,
+        usedCredit: true,
+        paidAt: new Date(),
+        policySignedName: policySignedName || null,
+        policySignature: policySignature || null,
+        policyAgreedAt: policyAgreedAt ? new Date(policyAgreedAt) : null,
+      },
+    });
+
+    await prisma.creditUsage.create({
+      data: { userPackageId: pkg.id, bookingId: booking.id },
+    });
+
+    const newUsed = pkg.creditsUsed + 1;
+    await prisma.userPackage.update({
+      where: { id: pkg.id },
+      data: {
+        creditsUsed: newUsed,
+        status: newUsed >= pkg.creditsTotal ? "exhausted" : "active",
+      },
+    });
+
+    // Send confirmation email
+    sendBookingConfirmation(user, session, booking).catch((err) =>
+      console.error("Email send failed:", err)
+    );
+
+    return res.json({
+      bookingId: booking.id,
+      usedCredit: true,
+      amount: 0,
+      currency: session.currency,
+    });
+  }
+
+  // ── Normal Razorpay booking ──
+  if (!razorpay) {
+    return res.status(400).json({ error: "razorpay_not_configured" });
+  }
+
   const order = await razorpay.orders.create({
-    amount: session.price * 100,
+    amount: finalAmount * 100,
     currency: session.currency,
     receipt: `booking_${Date.now()}`,
     notes: { sessionId, userId: user.id },
   });
+
   const booking = await prisma.booking.create({
     data: {
       userId: user.id,
       sessionId: session.id,
       status: "pending",
-      amount: session.price,
+      amount: finalAmount,
       currency: session.currency,
       razorpayOrderId: order.id,
+      promoCodeId,
+      promoDiscount,
+      referralDiscount,
       policySignedName: policySignedName || null,
       policySignature: policySignature || null,
       policyAgreedAt: policyAgreedAt ? new Date(policyAgreedAt) : null,
     },
   });
+
+  // Track promo usage
+  if (promoCodeId) {
+    await prisma.promoCode.update({ where: { id: promoCodeId }, data: { usedCount: { increment: 1 } } });
+    await prisma.promoUsage.create({
+      data: { promoCodeId, userId: user.id, bookingId: booking.id, discount: promoDiscount },
+    });
+  }
+
   return res.json({
     bookingId: booking.id,
     orderId: order.id,
-    amount: booking.amount,
+    amount: finalAmount,
+    originalAmount: session.price,
+    promoDiscount,
+    referralDiscount,
     currency: booking.currency,
     razorpayKeyId: RAZORPAY_KEY_ID,
   });
@@ -531,6 +744,219 @@ app.get("/sessions/:id/reviews", async (req, res) => {
   return res.json({ reviews, averageRating: Math.round(avg * 10) / 10, count: reviews.length });
 });
 
+// ─── Packages ────────────────────────────────────────────────────────────────
+
+app.get("/packages", async (_req, res) => {
+  const packages = await prisma.package.findMany({
+    where: { active: true },
+    orderBy: { sessionCount: "asc" },
+  });
+  return res.json({ packages });
+});
+
+app.post("/packages", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const { name, sessionCount, price, currency, description } = req.body || {};
+  if (!name || !sessionCount || !price) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  const pkg = await prisma.package.create({
+    data: { name, sessionCount, price, currency: currency || "INR", description },
+  });
+  return res.json({ package: pkg });
+});
+
+app.post("/packages/:id/purchase", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+
+  const pkg = await prisma.package.findUnique({ where: { id } });
+  if (!pkg || !pkg.active) {
+    return res.status(404).json({ error: "package_not_found" });
+  }
+  if (!razorpay) {
+    return res.status(400).json({ error: "razorpay_not_configured" });
+  }
+
+  const order = await razorpay.orders.create({
+    amount: pkg.price * 100,
+    currency: pkg.currency,
+    receipt: `pkg_${Date.now()}`,
+    notes: { packageId: id, userId: user.id },
+  });
+
+  const userPkg = await prisma.userPackage.create({
+    data: {
+      userId: user.id,
+      packageId: pkg.id,
+      creditsTotal: pkg.sessionCount,
+      razorpayOrderId: order.id,
+      status: "pending",
+    },
+  });
+
+  return res.json({
+    userPackageId: userPkg.id,
+    orderId: order.id,
+    amount: pkg.price,
+    currency: pkg.currency,
+    razorpayKeyId: RAZORPAY_KEY_ID,
+  });
+});
+
+app.post("/packages/verify-payment", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { userPackageId, razorpayOrderId, razorpayPaymentId, razorpaySignature } = req.body || {};
+
+  if (!userPackageId || !razorpayOrderId || !razorpayPaymentId || !razorpaySignature) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+
+  const userPkg = await prisma.userPackage.findUnique({ where: { id: userPackageId } });
+  if (!userPkg || userPkg.userId !== user.id) {
+    return res.status(404).json({ error: "package_not_found" });
+  }
+
+  const body = `${razorpayOrderId}|${razorpayPaymentId}`;
+  const expected = crypto.createHmac("sha256", RAZORPAY_KEY_SECRET).update(body).digest("hex");
+  if (expected !== razorpaySignature) {
+    return res.status(400).json({ error: "invalid_signature" });
+  }
+
+  const updated = await prisma.userPackage.update({
+    where: { id: userPackageId },
+    data: { status: "active", paidAt: new Date() },
+    include: { package: true },
+  });
+
+  return res.json({ userPackage: updated });
+});
+
+app.get("/my-packages", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const packages = await prisma.userPackage.findMany({
+    where: { userId: user.id },
+    include: { package: true },
+    orderBy: { createdAt: "desc" },
+  });
+  const totalCredits = packages
+    .filter((p) => p.status === "active")
+    .reduce((sum, p) => sum + (p.creditsTotal - p.creditsUsed), 0);
+  return res.json({ packages, totalCredits });
+});
+
+// ─── Promo Codes ─────────────────────────────────────────────────────────────
+
+app.post("/promo-codes/validate", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { code, amount } = req.body || {};
+
+  if (!code) return res.status(400).json({ error: "code_required" });
+
+  const promo = await prisma.promoCode.findUnique({ where: { code: code.toUpperCase() } });
+  if (!promo || !promo.active) {
+    return res.status(404).json({ error: "invalid_code", message: "Invalid promo code." });
+  }
+  if (promo.expiresAt && promo.expiresAt < new Date()) {
+    return res.status(400).json({ error: "expired", message: "This promo code has expired." });
+  }
+  if (promo.maxUses && promo.usedCount >= promo.maxUses) {
+    return res.status(400).json({ error: "limit_reached", message: "This promo code has reached its limit." });
+  }
+  if (promo.minAmount && amount && amount < promo.minAmount) {
+    return res.status(400).json({ error: "min_amount", message: `Minimum amount required: INR ${promo.minAmount}` });
+  }
+  const used = await prisma.promoUsage.findFirst({ where: { promoCodeId: promo.id, userId: user.id } });
+  if (used) {
+    return res.status(400).json({ error: "already_used", message: "You have already used this promo code." });
+  }
+
+  const discount =
+    promo.type === "percentage"
+      ? Math.round(((amount || 0) * promo.value) / 100)
+      : promo.value;
+
+  return res.json({
+    valid: true,
+    code: promo.code,
+    type: promo.type,
+    value: promo.value,
+    discount: Math.min(discount, amount || discount),
+    description: promo.type === "percentage" ? `${promo.value}% off` : `INR ${promo.value} off`,
+  });
+});
+
+// ─── Subscriptions ───────────────────────────────────────────────────────────
+
+app.post("/subscriptions", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { sessionTitle, frequency, price } = req.body || {};
+
+  if (!sessionTitle || !frequency || !price) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  if (!["weekly", "biweekly"].includes(frequency)) {
+    return res.status(400).json({ error: "invalid_frequency", message: "Frequency must be 'weekly' or 'biweekly'." });
+  }
+
+  const daysUntilNext = frequency === "weekly" ? 7 : 14;
+  const nextBillingAt = new Date(Date.now() + daysUntilNext * 24 * 60 * 60 * 1000);
+
+  const subscription = await prisma.subscription.create({
+    data: {
+      userId: user.id,
+      sessionTitle,
+      frequency,
+      price,
+      currency: "INR",
+      status: "active",
+      nextBillingAt,
+    },
+  });
+
+  return res.json({ subscription });
+});
+
+app.get("/my-subscriptions", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const subscriptions = await prisma.subscription.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+  });
+  return res.json({ subscriptions });
+});
+
+app.post("/subscriptions/:id/cancel", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+  const sub = await prisma.subscription.findUnique({ where: { id } });
+  if (!sub || sub.userId !== user.id) {
+    return res.status(404).json({ error: "subscription_not_found" });
+  }
+  if (sub.status === "cancelled") {
+    return res.status(400).json({ error: "already_cancelled" });
+  }
+  const updated = await prisma.subscription.update({
+    where: { id },
+    data: { status: "cancelled" },
+  });
+  return res.json({ subscription: updated });
+});
+
+app.post("/subscriptions/:id/pause", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+  const sub = await prisma.subscription.findUnique({ where: { id } });
+  if (!sub || sub.userId !== user.id) {
+    return res.status(404).json({ error: "subscription_not_found" });
+  }
+  const newStatus = sub.status === "paused" ? "active" : "paused";
+  const updated = await prisma.subscription.update({
+    where: { id },
+    data: { status: newStatus },
+  });
+  return res.json({ subscription: updated });
+});
+
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
 app.get("/admin/users", authMiddleware(), adminMiddleware(), async (_req, res) => {
@@ -563,6 +989,85 @@ app.get(
     return res.json({ payments });
   }
 );
+
+// ─── Admin Promo Codes ───────────────────────────────────────────────────────
+
+app.get("/admin/promo-codes", authMiddleware(), adminMiddleware(), async (_req, res) => {
+  const codes = await prisma.promoCode.findMany({ orderBy: { createdAt: "desc" } });
+  return res.json({ promoCodes: codes });
+});
+
+app.post("/admin/promo-codes", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const { code, type, value, maxUses, minAmount, expiresAt } = req.body || {};
+  if (!code || !type || !value) {
+    return res.status(400).json({ error: "missing_fields" });
+  }
+  if (!["percentage", "flat"].includes(type)) {
+    return res.status(400).json({ error: "invalid_type", message: "Type must be 'percentage' or 'flat'." });
+  }
+
+  try {
+    const promo = await prisma.promoCode.create({
+      data: {
+        code: code.toUpperCase(),
+        type,
+        value: Number(value),
+        maxUses: maxUses ? Number(maxUses) : null,
+        minAmount: minAmount ? Number(minAmount) : null,
+        expiresAt: expiresAt ? new Date(expiresAt) : null,
+      },
+    });
+    return res.json({ promoCode: promo });
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      return res.status(409).json({ error: "code_exists", message: "This promo code already exists." });
+    }
+    throw err;
+  }
+});
+
+app.patch("/admin/promo-codes/:id", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const { id } = req.params;
+  const { active } = req.body || {};
+  const updated = await prisma.promoCode.update({
+    where: { id },
+    data: { active: Boolean(active) },
+  });
+  return res.json({ promoCode: updated });
+});
+
+app.delete("/admin/promo-codes/:id", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const { id } = req.params;
+  await prisma.promoCode.delete({ where: { id } });
+  return res.json({ ok: true });
+});
+
+// ─── Admin Packages ──────────────────────────────────────────────────────────
+
+app.get("/admin/packages", authMiddleware(), adminMiddleware(), async (_req, res) => {
+  const packages = await prisma.package.findMany({ orderBy: { createdAt: "desc" } });
+  return res.json({ packages });
+});
+
+app.patch("/admin/packages/:id", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const { id } = req.params;
+  const { active } = req.body || {};
+  const updated = await prisma.package.update({
+    where: { id },
+    data: { active: Boolean(active) },
+  });
+  return res.json({ package: updated });
+});
+
+// ─── Admin Subscriptions ─────────────────────────────────────────────────────
+
+app.get("/admin/subscriptions", authMiddleware(), adminMiddleware(), async (_req, res) => {
+  const subs = await prisma.subscription.findMany({
+    orderBy: { createdAt: "desc" },
+    include: { user: { select: { name: true, phone: true, email: true } } },
+  });
+  return res.json({ subscriptions: subs });
+});
 
 // Auto-seed sessions if the table is empty (runs once on startup)
 async function autoSeed() {
@@ -657,10 +1162,107 @@ async function sendReminders() {
   }
 }
 
+// ─── Subscription billing cron ───────────────────────────────────────────────
+
+async function processSubscriptions() {
+  const now = new Date();
+  const dueSubs = await prisma.subscription.findMany({
+    where: {
+      status: "active",
+      nextBillingAt: { lte: now },
+    },
+    include: { user: true },
+  });
+
+  for (const sub of dueSubs) {
+    try {
+      // Find or create a session for this subscription
+      let session = await prisma.session.findFirst({
+        where: {
+          title: sub.sessionTitle,
+          startTime: { gt: now },
+        },
+        orderBy: { startTime: "asc" },
+      });
+
+      if (!session) {
+        // Create a future session
+        const daysAhead = sub.frequency === "weekly" ? 7 : 14;
+        session = await prisma.session.create({
+          data: {
+            title: sub.sessionTitle,
+            host: "Avadhi Sharma",
+            startTime: new Date(Date.now() + daysAhead * 24 * 60 * 60 * 1000),
+            price: sub.price,
+            currency: sub.currency,
+            tidycalUrl: "https://tidycal.com/avadhisharma",
+          },
+        });
+      }
+
+      // Check if user has credits
+      const allActive = await prisma.userPackage.findMany({
+        where: { userId: sub.userId, status: "active" },
+        orderBy: { createdAt: "asc" },
+      });
+      const pkg = allActive.find((p) => p.creditsUsed < p.creditsTotal) || null;
+
+      if (pkg) {
+        // Use credit
+        const booking = await prisma.booking.create({
+          data: {
+            userId: sub.userId,
+            sessionId: session.id,
+            status: "paid",
+            amount: 0,
+            currency: sub.currency,
+            usedCredit: true,
+            paidAt: new Date(),
+          },
+        });
+        await prisma.creditUsage.create({ data: { userPackageId: pkg.id, bookingId: booking.id } });
+        const newUsed = pkg.creditsUsed + 1;
+        await prisma.userPackage.update({
+          where: { id: pkg.id },
+          data: { creditsUsed: newUsed, status: newUsed >= pkg.creditsTotal ? "exhausted" : "active" },
+        });
+        console.log(`Subscription ${sub.id}: auto-booked with credit for ${sub.sessionTitle}`);
+      } else {
+        // Create pending booking (user needs to pay)
+        await prisma.booking.create({
+          data: {
+            userId: sub.userId,
+            sessionId: session.id,
+            status: "pending_payment",
+            amount: sub.price,
+            currency: sub.currency,
+          },
+        });
+        console.log(`Subscription ${sub.id}: created pending booking for ${sub.sessionTitle}`);
+      }
+
+      // Advance next billing date
+      const daysUntilNext = sub.frequency === "weekly" ? 7 : 14;
+      await prisma.subscription.update({
+        where: { id: sub.id },
+        data: { nextBillingAt: new Date(Date.now() + daysUntilNext * 24 * 60 * 60 * 1000) },
+      });
+    } catch (err) {
+      console.error(`Subscription ${sub.id} processing failed:`, err);
+    }
+  }
+}
+
 // Run reminder check every 10 minutes
 cron.schedule("*/10 * * * *", () => {
   console.log("Running session reminder check...");
   sendReminders().catch((err) => console.error("Reminder cron error:", err));
+});
+
+// Run subscription processing daily at midnight
+cron.schedule("0 0 * * *", () => {
+  console.log("Processing subscriptions...");
+  processSubscriptions().catch((err) => console.error("Subscription cron error:", err));
 });
 
 const port = Number(process.env.PORT || 4000);

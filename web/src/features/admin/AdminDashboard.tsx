@@ -3,6 +3,11 @@ import {
   fetchAdminBookings,
   fetchAdminPayments,
   fetchAdminUsers,
+  fetchAdminPromoCodes,
+  createAdminPromoCode,
+  toggleAdminPromoCode,
+  deleteAdminPromoCode,
+  PromoCodeType,
 } from "../../lib/api";
 
 type Props = {
@@ -10,14 +15,22 @@ type Props = {
   token: string;
 };
 
-type Tab = "users" | "bookings" | "payments";
+type Tab = "users" | "bookings" | "payments" | "promos";
 
 export function AdminDashboard({ isAdmin, token }: Props) {
   const [users, setUsers] = useState<any[]>([]);
   const [bookings, setBookings] = useState<any[]>([]);
   const [payments, setPayments] = useState<any[]>([]);
+  const [promoCodes, setPromoCodes] = useState<PromoCodeType[]>([]);
   const [activeTab, setActiveTab] = useState<Tab>("users");
   const [loading, setLoading] = useState(true);
+
+  // Promo form state
+  const [showPromoForm, setShowPromoForm] = useState(false);
+  const [promoForm, setPromoForm] = useState({
+    code: "", type: "percentage" as "percentage" | "flat", value: "", maxUses: "", minAmount: "", expiresAt: "",
+  });
+  const [promoError, setPromoError] = useState<string | null>(null);
 
   useEffect(() => {
     if (!isAdmin) return;
@@ -26,8 +39,42 @@ export function AdminDashboard({ isAdmin, token }: Props) {
       fetchAdminUsers(token).then((res) => setUsers(res.users)),
       fetchAdminBookings(token).then((res) => setBookings(res.bookings)),
       fetchAdminPayments(token).then((res) => setPayments(res.payments)),
+      fetchAdminPromoCodes(token).then((res) => setPromoCodes(res.promoCodes)),
     ]).finally(() => setLoading(false));
   }, [isAdmin, token]);
+
+  async function handleCreatePromo() {
+    setPromoError(null);
+    if (!promoForm.code || !promoForm.value) {
+      setPromoError("Code and value are required.");
+      return;
+    }
+    try {
+      const res = await createAdminPromoCode(token, {
+        code: promoForm.code,
+        type: promoForm.type,
+        value: Number(promoForm.value),
+        maxUses: promoForm.maxUses ? Number(promoForm.maxUses) : undefined,
+        minAmount: promoForm.minAmount ? Number(promoForm.minAmount) : undefined,
+        expiresAt: promoForm.expiresAt || undefined,
+      });
+      setPromoCodes((prev) => [res.promoCode, ...prev]);
+      setShowPromoForm(false);
+      setPromoForm({ code: "", type: "percentage", value: "", maxUses: "", minAmount: "", expiresAt: "" });
+    } catch (err: any) {
+      setPromoError(err.message || "Failed to create.");
+    }
+  }
+
+  async function handleTogglePromo(id: string, active: boolean) {
+    const res = await toggleAdminPromoCode(token, id, active);
+    setPromoCodes((prev) => prev.map((p) => (p.id === id ? res.promoCode : p)));
+  }
+
+  async function handleDeletePromo(id: string) {
+    await deleteAdminPromoCode(token, id);
+    setPromoCodes((prev) => prev.filter((p) => p.id !== id));
+  }
 
   if (!isAdmin) return null;
 
@@ -35,6 +82,7 @@ export function AdminDashboard({ isAdmin, token }: Props) {
     { key: "users", label: "Users", count: users.length },
     { key: "bookings", label: "Bookings", count: bookings.length },
     { key: "payments", label: "Payments", count: payments.length },
+    { key: "promos", label: "Promo Codes", count: promoCodes.length },
   ];
 
   return (
@@ -231,6 +279,134 @@ export function AdminDashboard({ isAdmin, token }: Props) {
               {payments.length === 0 && (
                 <div className="text-center py-8 text-charcoal-lighter text-sm">No payments yet.</div>
               )}
+            </div>
+          )}
+
+          {/* Promo Codes Management */}
+          {activeTab === "promos" && (
+            <div className="p-4">
+              <div className="flex items-center justify-between mb-4">
+                <h3 className="font-semibold text-charcoal">Promo Codes</h3>
+                <button
+                  onClick={() => setShowPromoForm(!showPromoForm)}
+                  className="px-3 py-1.5 bg-brand-500 hover:bg-brand-600 text-white text-xs font-semibold rounded-lg transition"
+                >
+                  {showPromoForm ? "Cancel" : "+ New Code"}
+                </button>
+              </div>
+
+              {showPromoForm && (
+                <div className="bg-warm-50 rounded-xl p-4 mb-4 border border-warm-200">
+                  <div className="grid grid-cols-2 gap-3 mb-3">
+                    <input
+                      value={promoForm.code}
+                      onChange={(e) => setPromoForm({ ...promoForm, code: e.target.value.toUpperCase() })}
+                      placeholder="Code (e.g. SAVE20)"
+                      className="px-3 py-2 rounded-lg border border-warm-300 text-sm uppercase"
+                    />
+                    <select
+                      value={promoForm.type}
+                      onChange={(e) => setPromoForm({ ...promoForm, type: e.target.value as any })}
+                      className="px-3 py-2 rounded-lg border border-warm-300 text-sm"
+                    >
+                      <option value="percentage">Percentage (%)</option>
+                      <option value="flat">Flat (INR)</option>
+                    </select>
+                    <input
+                      value={promoForm.value}
+                      onChange={(e) => setPromoForm({ ...promoForm, value: e.target.value })}
+                      placeholder={promoForm.type === "percentage" ? "Discount %" : "Discount INR"}
+                      type="number"
+                      className="px-3 py-2 rounded-lg border border-warm-300 text-sm"
+                    />
+                    <input
+                      value={promoForm.maxUses}
+                      onChange={(e) => setPromoForm({ ...promoForm, maxUses: e.target.value })}
+                      placeholder="Max uses (optional)"
+                      type="number"
+                      className="px-3 py-2 rounded-lg border border-warm-300 text-sm"
+                    />
+                    <input
+                      value={promoForm.minAmount}
+                      onChange={(e) => setPromoForm({ ...promoForm, minAmount: e.target.value })}
+                      placeholder="Min amount (optional)"
+                      type="number"
+                      className="px-3 py-2 rounded-lg border border-warm-300 text-sm"
+                    />
+                    <input
+                      value={promoForm.expiresAt}
+                      onChange={(e) => setPromoForm({ ...promoForm, expiresAt: e.target.value })}
+                      placeholder="Expiry date"
+                      type="date"
+                      className="px-3 py-2 rounded-lg border border-warm-300 text-sm"
+                    />
+                  </div>
+                  {promoError && <p className="text-xs text-red-500 mb-2">{promoError}</p>}
+                  <button
+                    onClick={handleCreatePromo}
+                    className="px-4 py-2 bg-brand-500 hover:bg-brand-600 text-white text-sm font-semibold rounded-lg transition"
+                  >
+                    Create Promo Code
+                  </button>
+                </div>
+              )}
+
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="bg-deep text-left">
+                      <th className="px-4 py-3 font-medium text-white/70">Code</th>
+                      <th className="px-4 py-3 font-medium text-white/70">Discount</th>
+                      <th className="px-4 py-3 font-medium text-white/70">Usage</th>
+                      <th className="px-4 py-3 font-medium text-white/70">Status</th>
+                      <th className="px-4 py-3 font-medium text-white/70">Expires</th>
+                      <th className="px-4 py-3 font-medium text-white/70">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-warm-100">
+                    {promoCodes.map((p) => (
+                      <tr key={p.id} className="hover:bg-warm-50/50">
+                        <td className="px-4 py-3 font-mono font-bold text-brand-700">{p.code}</td>
+                        <td className="px-4 py-3 text-charcoal-light">
+                          {p.type === "percentage" ? `${p.value}%` : `INR ${p.value}`}
+                        </td>
+                        <td className="px-4 py-3 text-charcoal-light">
+                          {p.usedCount}{p.maxUses ? ` / ${p.maxUses}` : ""}
+                        </td>
+                        <td className="px-4 py-3">
+                          <span className={`inline-flex text-xs font-medium px-2 py-0.5 rounded-full ${
+                            p.active ? "bg-sage-50 text-sage-700" : "bg-red-50 text-red-600"
+                          }`}>
+                            {p.active ? "Active" : "Inactive"}
+                          </span>
+                        </td>
+                        <td className="px-4 py-3 text-charcoal-lighter text-xs">
+                          {p.expiresAt ? new Date(p.expiresAt).toLocaleDateString("en-IN") : "—"}
+                        </td>
+                        <td className="px-4 py-3">
+                          <div className="flex gap-1.5">
+                            <button
+                              onClick={() => handleTogglePromo(p.id, !p.active)}
+                              className="text-xs px-2 py-1 rounded border border-warm-300 hover:bg-warm-100 transition-colors"
+                            >
+                              {p.active ? "Disable" : "Enable"}
+                            </button>
+                            <button
+                              onClick={() => handleDeletePromo(p.id)}
+                              className="text-xs px-2 py-1 rounded border border-red-200 text-red-500 hover:bg-red-50 transition-colors"
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                {promoCodes.length === 0 && (
+                  <div className="text-center py-8 text-charcoal-lighter text-sm">No promo codes yet.</div>
+                )}
+              </div>
             </div>
           )}
         </div>

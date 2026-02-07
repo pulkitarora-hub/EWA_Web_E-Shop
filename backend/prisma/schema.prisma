@@ -15,11 +15,18 @@ model User {
   email               String?
   name                String?
   goal                String?
+  referralCode        String?  @unique
+  referredByCode      String?
   onboardingComplete  Boolean  @default(false)
   isAdmin             Boolean  @default(false)
   bookings            Booking[]
   payments            Payment[]
   reviews             Review[]
+  userPackages        UserPackage[]
+  subscriptions       Subscription[]
+  referralsMade       Referral[] @relation("Referrer")
+  referralsReceived   Referral[] @relation("Referee")
+  promoUsages         PromoUsage[]
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -44,12 +51,16 @@ model Booking {
   status           String
   amount           Int
   currency         String
-  razorpayOrderId  String
+  razorpayOrderId  String?
   paidAt           DateTime?
   cancelledAt      DateTime?
   cancelReason     String?
   reminder24hSent  Boolean   @default(false)
   reminder1hSent   Boolean   @default(false)
+  promoCodeId      String?
+  promoDiscount    Int       @default(0)
+  referralDiscount Int       @default(0)
+  usedCredit       Boolean   @default(false)
   policySignedName String?
   policySignature  String?
   policyAgreedAt   DateTime?
@@ -57,6 +68,7 @@ model Booking {
   session          Session   @relation(fields: [sessionId], references: [id])
   payment          Payment?
   review           Review?
+  creditUsage      CreditUsage?
   createdAt        DateTime  @default(now())
 }
 
@@ -83,4 +95,92 @@ model Review {
   user      User     @relation(fields: [userId], references: [id])
   session   Session  @relation(fields: [sessionId], references: [id])
   createdAt DateTime @default(now())
+}
+
+model Package {
+  id           String        @id @default(uuid())
+  name         String
+  sessionCount Int
+  price        Int
+  currency     String        @default("INR")
+  description  String?
+  active       Boolean       @default(true)
+  userPackages UserPackage[]
+  createdAt    DateTime      @default(now())
+}
+
+model UserPackage {
+  id              String        @id @default(uuid())
+  userId          String
+  packageId       String
+  creditsTotal    Int
+  creditsUsed     Int           @default(0)
+  razorpayOrderId String?
+  status          String        // pending, active, exhausted
+  paidAt          DateTime?
+  user            User          @relation(fields: [userId], references: [id])
+  package         Package       @relation(fields: [packageId], references: [id])
+  creditUsages    CreditUsage[]
+  createdAt       DateTime      @default(now())
+}
+
+model CreditUsage {
+  id            String      @id @default(uuid())
+  userPackageId String
+  bookingId     String      @unique
+  userPackage   UserPackage @relation(fields: [userPackageId], references: [id])
+  booking       Booking     @relation(fields: [bookingId], references: [id])
+  createdAt     DateTime    @default(now())
+}
+
+model Subscription {
+  id            String   @id @default(uuid())
+  userId        String
+  sessionTitle  String
+  frequency     String   // weekly, biweekly
+  price         Int
+  currency      String   @default("INR")
+  status        String   // active, paused, cancelled
+  nextBillingAt DateTime
+  user          User     @relation(fields: [userId], references: [id])
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+model Referral {
+  id           String   @id @default(uuid())
+  referrerId   String
+  refereeId    String
+  status       String   // pending, completed
+  discountPct  Int      @default(10)
+  referrerUsed Boolean  @default(false)
+  refereeUsed  Boolean  @default(false)
+  referrer     User     @relation("Referrer", fields: [referrerId], references: [id])
+  referee      User     @relation("Referee", fields: [refereeId], references: [id])
+  createdAt    DateTime @default(now())
+}
+
+model PromoCode {
+  id          String       @id @default(uuid())
+  code        String       @unique
+  type        String       // percentage, flat
+  value       Int
+  maxUses     Int?
+  usedCount   Int          @default(0)
+  minAmount   Int?
+  active      Boolean      @default(true)
+  expiresAt   DateTime?
+  promoUsages PromoUsage[]
+  createdAt   DateTime     @default(now())
+}
+
+model PromoUsage {
+  id          String    @id @default(uuid())
+  promoCodeId String
+  userId      String
+  bookingId   String?
+  discount    Int
+  promoCode   PromoCode @relation(fields: [promoCodeId], references: [id])
+  user        User      @relation(fields: [userId], references: [id])
+  createdAt   DateTime  @default(now())
 }

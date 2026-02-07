@@ -1,8 +1,9 @@
-import React, { useState } from "react";
+import React, { useEffect, useState } from "react";
 import { Session } from "./sessionApi";
 import { createBookingAndOrder, verifyPayment, PolicyData } from "../bookings/bookingApi";
 import { PolicyModal } from "./PolicyModal";
 import { SessionReviewsDisplay } from "./SessionReviews";
+import { validatePromoCode, fetchMyPackages, PromoValidation } from "../../lib/api";
 
 type Props = {
   session: Session;
@@ -32,6 +33,43 @@ export function SessionDetail({ session, token, userName }: Props) {
   const [showCalendar, setShowCalendar] = useState(false);
   const [showPolicy, setShowPolicy] = useState(false);
 
+  // Promo code state
+  const [promoInput, setPromoInput] = useState("");
+  const [promoResult, setPromoResult] = useState<PromoValidation | null>(null);
+  const [promoError, setPromoError] = useState<string | null>(null);
+  const [checkingPromo, setCheckingPromo] = useState(false);
+
+  // Credits state
+  const [totalCredits, setTotalCredits] = useState(0);
+  const [useCredit, setUseCredit] = useState(false);
+
+  useEffect(() => {
+    fetchMyPackages(token)
+      .then((res) => setTotalCredits(res.totalCredits))
+      .catch(() => {});
+  }, [token]);
+
+  async function handlePromoCheck() {
+    if (!promoInput.trim()) return;
+    setCheckingPromo(true);
+    setPromoError(null);
+    setPromoResult(null);
+    try {
+      const res = await validatePromoCode(token, promoInput.trim(), session.price);
+      setPromoResult(res);
+    } catch (err: any) {
+      setPromoError(err.message || "Invalid promo code.");
+    } finally {
+      setCheckingPromo(false);
+    }
+  }
+
+  function clearPromo() {
+    setPromoInput("");
+    setPromoResult(null);
+    setPromoError(null);
+  }
+
   async function handlePolicyConfirm(policyData: {
     signedName: string;
     signatureDataUrl: string;
@@ -55,7 +93,22 @@ export function SessionDetail({ session, token, userName }: Props) {
         policyAgreedAt: policyData.agreedAt,
       };
 
-      const order = await createBookingAndOrder(token, session, pd);
+      const extras: { promoCode?: string; useCredit?: boolean } = {};
+      if (useCredit) {
+        extras.useCredit = true;
+      } else if (promoResult?.valid) {
+        extras.promoCode = promoResult.code;
+      }
+
+      const order = await createBookingAndOrder(token, session, pd, extras);
+
+      // Credit booking — no Razorpay needed
+      if (order.usedCredit) {
+        setStatus("success");
+        setStatusMessage("Booking confirmed using your session credit!");
+        if (session.tidycalUrl) setShowCalendar(true);
+        return;
+      }
 
       const options = {
         key: order.razorpayKeyId,
@@ -140,12 +193,87 @@ export function SessionDetail({ session, token, userName }: Props) {
             </div>
           </div>
 
-          <div className="flex items-center justify-between p-4 bg-brand-50 rounded-xl mb-6 border border-brand-200/50">
+          <div className="flex items-center justify-between p-4 bg-brand-50 rounded-xl mb-4 border border-brand-200/50">
             <span className="text-sm font-medium text-charcoal-light">Session fee</span>
-            <span className="text-2xl font-bold text-brand-700">
-              {session.currency} {session.price}
-            </span>
+            <div className="text-right">
+              {useCredit ? (
+                <div>
+                  <span className="text-lg line-through text-charcoal-lighter mr-2">{session.currency} {session.price}</span>
+                  <span className="text-2xl font-bold text-green-600">FREE</span>
+                  <p className="text-xs text-green-600">Using session credit</p>
+                </div>
+              ) : promoResult?.valid ? (
+                <div>
+                  <span className="text-lg line-through text-charcoal-lighter mr-2">{session.currency} {session.price}</span>
+                  <span className="text-2xl font-bold text-brand-700">{session.currency} {session.price - promoResult.discount}</span>
+                  <p className="text-xs text-green-600">-{session.currency} {promoResult.discount} ({promoResult.description})</p>
+                </div>
+              ) : (
+                <span className="text-2xl font-bold text-brand-700">
+                  {session.currency} {session.price}
+                </span>
+              )}
+            </div>
           </div>
+
+          {/* Credit toggle */}
+          {totalCredits > 0 && status !== "success" && (
+            <div className="mb-4 p-3 bg-green-50 border border-green-200 rounded-xl">
+              <label className="flex items-center gap-3 cursor-pointer">
+                <input
+                  type="checkbox"
+                  checked={useCredit}
+                  onChange={(e) => {
+                    setUseCredit(e.target.checked);
+                    if (e.target.checked) clearPromo();
+                  }}
+                  className="w-4 h-4 text-brand-500 rounded focus:ring-brand-400"
+                />
+                <div>
+                  <span className="text-sm font-medium text-charcoal">
+                    Use session credit ({totalCredits} available)
+                  </span>
+                  <p className="text-xs text-charcoal-lighter">Book this session for free using your package credits</p>
+                </div>
+              </label>
+            </div>
+          )}
+
+          {/* Promo code input */}
+          {!useCredit && status !== "success" && (
+            <div className="mb-4">
+              {promoResult?.valid ? (
+                <div className="flex items-center justify-between p-3 bg-green-50 border border-green-200 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <svg className="w-4 h-4 text-green-600" fill="currentColor" viewBox="0 0 20 20">
+                      <path fillRule="evenodd" d="M16.707 5.293a1 1 0 010 1.414l-8 8a1 1 0 01-1.414 0l-4-4a1 1 0 011.414-1.414L8 12.586l7.293-7.293a1 1 0 011.414 0z" clipRule="evenodd" />
+                    </svg>
+                    <span className="text-sm font-medium text-green-700">{promoResult.code} — {promoResult.description}</span>
+                  </div>
+                  <button onClick={clearPromo} className="text-xs text-red-500 hover:text-red-700">Remove</button>
+                </div>
+              ) : (
+                <div className="flex gap-2">
+                  <input
+                    value={promoInput}
+                    onChange={(e) => setPromoInput(e.target.value.toUpperCase())}
+                    placeholder="Promo code"
+                    className="flex-1 px-4 py-2.5 rounded-xl border border-warm-300 bg-warm-50/50 text-charcoal uppercase tracking-wider text-sm placeholder:text-charcoal-lighter/50 focus:ring-2 focus:ring-brand-400/40 focus:border-brand-400 transition"
+                  />
+                  <button
+                    onClick={handlePromoCheck}
+                    disabled={!promoInput.trim() || checkingPromo}
+                    className="px-4 py-2.5 bg-warm-200 hover:bg-warm-300 disabled:bg-warm-100 text-charcoal font-medium rounded-xl text-sm transition"
+                  >
+                    {checkingPromo ? "..." : "Apply"}
+                  </button>
+                </div>
+              )}
+              {promoError && (
+                <p className="text-xs text-red-500 mt-1.5">{promoError}</p>
+              )}
+            </div>
+          )}
 
           {/* Book button */}
           {status !== "success" && (
@@ -155,7 +283,7 @@ export function SessionDetail({ session, token, userName }: Props) {
               className="w-full py-3.5 px-4 bg-brand-500 hover:bg-brand-600 disabled:bg-warm-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-md shadow-brand-500/20 flex items-center justify-center gap-2 transition text-base"
             >
               {loading ? <Spinner /> : null}
-              {loading ? "Processing..." : "Book this session"}
+              {loading ? "Processing..." : useCredit ? "Book with Credit" : "Book this session"}
             </button>
           )}
 

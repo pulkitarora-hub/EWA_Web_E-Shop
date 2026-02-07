@@ -10,87 +10,133 @@ import { Session } from "./features/sessions/sessionApi";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { ProfilePage } from "./features/profile/ProfilePage";
 import { MyBookings } from "./features/bookings/MyBookings";
+import { PackagesPage } from "./features/packages/PackagesPage";
+import { SubscriptionsPage } from "./features/subscriptions/SubscriptionsPage";
+import { ReferralSection } from "./features/referral/ReferralSection";
 
-type View = "sessions" | "bookings" | "profile" | "admin";
+type View = "sessions" | "bookings" | "packages" | "subscriptions" | "referral" | "profile" | "admin";
 
 function Navbar({
   user,
   onLogout,
-  onShowAdmin,
-  onShowProfile,
-  onShowBookings,
+  onNavigate,
   activeView,
 }: {
   user: User;
   onLogout: () => void;
-  onShowAdmin?: () => void;
-  onShowProfile: () => void;
-  onShowBookings: () => void;
+  onNavigate: (view: View) => void;
   activeView: View;
 }) {
+  const [mobileMenu, setMobileMenu] = useState(false);
+
+  const navItems: { key: View; label: string; adminOnly?: boolean }[] = [
+    { key: "sessions", label: "Sessions" },
+    { key: "bookings", label: "My Bookings" },
+    { key: "packages", label: "Packages" },
+    { key: "subscriptions", label: "Recurring" },
+    { key: "referral", label: "Referral" },
+    { key: "admin", label: "Admin", adminOnly: true },
+  ];
+
+  function NavButton({ item }: { item: typeof navItems[0] }) {
+    if (item.adminOnly && !user.isAdmin) return null;
+    return (
+      <button
+        onClick={() => { onNavigate(item.key); setMobileMenu(false); }}
+        className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors whitespace-nowrap ${
+          activeView === item.key
+            ? "bg-brand-500 text-white"
+            : "text-brand-300 hover:bg-deep-light hover:text-brand-200"
+        }`}
+      >
+        {item.label}
+      </button>
+    );
+  }
+
   return (
     <nav className="bg-deep sticky top-0 z-40 shadow-lg shadow-deep/30">
       <div className="max-w-5xl mx-auto px-4 sm:px-6 py-2.5 flex items-center justify-between">
-        <div className="flex items-center gap-3">
-          <img
-            src="/ea-logo.png"
-            alt="Evolve with Avadhi"
-            className="h-10 w-auto"
-          />
-        </div>
-        <div className="flex items-center gap-2 sm:gap-3">
+        <button onClick={() => onNavigate("sessions")} className="flex items-center gap-3">
+          <img src="/ea-logo.png" alt="Evolve with Avadhi" className="h-10 w-auto" />
+        </button>
+
+        {/* Desktop nav */}
+        <div className="hidden md:flex items-center gap-1.5">
+          {navItems.map((item) => <NavButton key={item.key} item={item} />)}
           <button
-            onClick={onShowBookings}
-            className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
-              activeView === "bookings"
-                ? "bg-brand-500 text-white"
-                : "text-brand-300 hover:bg-deep-light hover:text-brand-200"
-            }`}
-          >
-            My Bookings
-          </button>
-          {user.isAdmin && onShowAdmin && (
-            <button
-              onClick={onShowAdmin}
-              className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
-                activeView === "admin"
-                  ? "bg-brand-500 text-white"
-                  : "text-brand-300 hover:bg-deep-light hover:text-brand-200"
-              }`}
-            >
-              Admin
-            </button>
-          )}
-          {/* Profile button */}
-          <button
-            onClick={onShowProfile}
-            className={`p-1.5 rounded-lg transition-colors ${
-              activeView === "profile"
-                ? "bg-brand-500"
-                : "hover:bg-deep-light"
-            }`}
+            onClick={() => onNavigate("profile")}
+            className={`p-1.5 rounded-lg transition-colors ml-1 ${activeView === "profile" ? "bg-brand-500" : "hover:bg-deep-light"}`}
             title="Profile"
           >
             {user.avatarUrl ? (
-              <img
-                src={user.avatarUrl}
-                alt="Profile"
-                className="w-7 h-7 rounded-full border-2 border-white/20"
-              />
+              <img src={user.avatarUrl} alt="Profile" className="w-7 h-7 rounded-full border-2 border-white/20" />
             ) : (
               <svg className={`w-5 h-5 ${activeView === "profile" ? "text-white" : "text-white/60 hover:text-white"}`} fill="none" stroke="currentColor" viewBox="0 0 24 24">
                 <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
               </svg>
             )}
           </button>
-          <button
-            onClick={onLogout}
-            className="text-sm text-white/50 hover:text-red-400 px-3 py-1.5 rounded-lg hover:bg-deep-light transition-colors"
-          >
+          <button onClick={onLogout} className="text-sm text-white/50 hover:text-red-400 px-3 py-1.5 rounded-lg hover:bg-deep-light transition-colors">
             Logout
           </button>
         </div>
+
+        {/* Mobile menu toggle */}
+        <div className="flex md:hidden items-center gap-2">
+          <button
+            onClick={() => onNavigate("profile")}
+            className={`p-1.5 rounded-lg transition-colors ${activeView === "profile" ? "bg-brand-500" : "hover:bg-deep-light"}`}
+          >
+            {user.avatarUrl ? (
+              <img src={user.avatarUrl} alt="" className="w-6 h-6 rounded-full border border-white/20" />
+            ) : (
+              <svg className="w-5 h-5 text-white/60" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15.75 6a3.75 3.75 0 11-7.5 0 3.75 3.75 0 017.5 0zM4.501 20.118a7.5 7.5 0 0114.998 0A17.933 17.933 0 0112 21.75c-2.676 0-5.216-.584-7.499-1.632z" />
+              </svg>
+            )}
+          </button>
+          <button onClick={() => setMobileMenu(!mobileMenu)} className="p-1.5 text-white/60 hover:text-white">
+            <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+              {mobileMenu ? (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
+              ) : (
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M4 6h16M4 12h16M4 18h16" />
+              )}
+            </svg>
+          </button>
+        </div>
       </div>
+
+      {/* Mobile dropdown */}
+      {mobileMenu && (
+        <div className="md:hidden bg-deep border-t border-white/10 px-4 pb-3">
+          <div className="flex flex-col gap-1 pt-2">
+            {navItems.map((item) => {
+              if (item.adminOnly && !user.isAdmin) return null;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => { onNavigate(item.key); setMobileMenu(false); }}
+                  className={`text-left text-sm px-3 py-2 rounded-lg font-medium transition-colors ${
+                    activeView === item.key
+                      ? "bg-brand-500 text-white"
+                      : "text-brand-300 hover:bg-deep-light"
+                  }`}
+                >
+                  {item.label}
+                </button>
+              );
+            })}
+            <button
+              onClick={() => { onLogout(); setMobileMenu(false); }}
+              className="text-left text-sm text-red-400 px-3 py-2 rounded-lg hover:bg-deep-light transition-colors"
+            >
+              Logout
+            </button>
+          </div>
+        </div>
+      )}
     </nav>
   );
 }
@@ -193,20 +239,8 @@ export function App() {
       <Navbar
         user={user}
         onLogout={handleLogout}
-        onShowAdmin={
-          user.isAdmin
-            ? () => {
-                setActiveView(activeView === "admin" ? "sessions" : "admin");
-                setSelectedSession(null);
-              }
-            : undefined
-        }
-        onShowBookings={() => {
-          setActiveView(activeView === "bookings" ? "sessions" : "bookings");
-          setSelectedSession(null);
-        }}
-        onShowProfile={() => {
-          setActiveView(activeView === "profile" ? "sessions" : "profile");
+        onNavigate={(view) => {
+          setActiveView(view);
           setSelectedSession(null);
         }}
         activeView={activeView}
@@ -217,6 +251,12 @@ export function App() {
           <AdminDashboard isAdmin={user.isAdmin} token={token} />
         ) : activeView === "bookings" ? (
           <MyBookings token={token} />
+        ) : activeView === "packages" ? (
+          <PackagesPage token={token} />
+        ) : activeView === "subscriptions" ? (
+          <SubscriptionsPage token={token} />
+        ) : activeView === "referral" ? (
+          <ReferralSection token={token} />
         ) : activeView === "profile" ? (
           <ProfilePage
             user={user}

@@ -10,12 +10,13 @@ export type PolicyData = {
 export async function createBookingAndOrder(
   token: string,
   session: Session,
-  policyData?: PolicyData
+  policyData?: PolicyData,
+  extras?: { promoCode?: string; useCredit?: boolean }
 ) {
   if (!session.id) {
     throw new Error("session_id_missing");
   }
-  return createBooking(token, session.id, policyData);
+  return createBooking(token, session.id, policyData, extras);
 }
 
 export async function verifyPayment(input: {
