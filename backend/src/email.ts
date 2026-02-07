@@ -3,6 +3,7 @@ import * as ics from "ics";
 
 const RESEND_API_KEY = process.env.RESEND_API_KEY || "";
 const FROM_EMAIL = process.env.FROM_EMAIL || "onboarding@resend.dev";
+const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || "";
 
 const resend = RESEND_API_KEY ? new Resend(RESEND_API_KEY) : null;
 
@@ -132,5 +133,75 @@ export async function sendBookingConfirmation(
     console.log(`Confirmation email sent to ${user.email}`);
   } catch (err) {
     console.error("Failed to send email:", err);
+  }
+}
+
+export async function sendSessionReminder(
+  user: UserInfo,
+  session: SessionInfo,
+  hoursUntil: number
+) {
+  const startDate = toDate(session.startTime);
+  const formattedDate = startDate.toLocaleString("en-IN", {
+    dateStyle: "full",
+    timeStyle: "short",
+    timeZone: "Asia/Kolkata",
+  });
+
+  const timeLabel = hoursUntil <= 1 ? "1 hour" : "24 hours";
+
+  // Send email reminder
+  if (user.email && resend) {
+    try {
+      await resend.emails.send({
+        from: FROM_EMAIL,
+        to: user.email,
+        subject: `Reminder: ${session.title} in ${timeLabel}`,
+        html: `
+          <h2>Session Reminder</h2>
+          <p>Hi ${user.name || "there"},</p>
+          <p>This is a friendly reminder that your session is coming up in <strong>${timeLabel}</strong>.</p>
+          <table>
+            <tr><td><strong>Session:</strong></td><td>${session.title}</td></tr>
+            <tr><td><strong>Host:</strong></td><td>${session.host}</td></tr>
+            <tr><td><strong>Date/Time:</strong></td><td>${formattedDate}</td></tr>
+          </table>
+          <br/>
+          <p>We look forward to seeing you!</p>
+          <p style="color:#666;font-size:12px;">— Evolve with Avadhi</p>
+        `,
+      });
+      console.log(`Reminder email (${timeLabel}) sent to ${user.email}`);
+    } catch (err) {
+      console.error(`Failed to send reminder email to ${user.email}:`, err);
+    }
+  }
+
+  // Send SMS reminder via MSG91 (if user has phone and MSG91 configured)
+  if ((user as any).phone && MSG91_AUTH_KEY) {
+    try {
+      const smsBody = `Reminder: Your session "${session.title}" with ${session.host} is in ${timeLabel} (${formattedDate}). — Evolve with Avadhi`;
+      await fetch("https://control.msg91.com/api/v5/flow/", {
+        method: "POST",
+        headers: {
+          authkey: MSG91_AUTH_KEY,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          flow_id: process.env.MSG91_REMINDER_FLOW_ID || "",
+          recipients: [
+            {
+              mobiles: (user as any).phone,
+              session_title: session.title,
+              session_time: formattedDate,
+              time_label: timeLabel,
+            },
+          ],
+        }),
+      });
+      console.log(`Reminder SMS (${timeLabel}) sent to ${(user as any).phone}`);
+    } catch (err) {
+      console.error(`Failed to send reminder SMS:`, err);
+    }
   }
 }

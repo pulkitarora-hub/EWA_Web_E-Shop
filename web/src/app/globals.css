@@ -47,6 +47,9 @@
   --color-deep-light: #2e2e4a;
   --color-deep-border: #3a3a5c;
 
+  /* Login/auth background */
+  --color-auth-bg: #4f1f4f;
+
   /* Charcoal text */
   --color-charcoal: #2d2d2d;
   --color-charcoal-light: #4a4a4a;

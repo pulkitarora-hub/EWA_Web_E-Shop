@@ -19,6 +19,7 @@ model User {
   isAdmin             Boolean  @default(false)
   bookings            Booking[]
   payments            Payment[]
+  reviews             Review[]
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
 }
@@ -32,6 +33,7 @@ model Session {
   currency   String
   tidycalUrl String?
   bookings   Booking[]
+  reviews    Review[]
   createdAt  DateTime @default(now())
 }
 
@@ -44,12 +46,17 @@ model Booking {
   currency         String
   razorpayOrderId  String
   paidAt           DateTime?
+  cancelledAt      DateTime?
+  cancelReason     String?
+  reminder24hSent  Boolean   @default(false)
+  reminder1hSent   Boolean   @default(false)
   policySignedName String?
   policySignature  String?
   policyAgreedAt   DateTime?
   user             User      @relation(fields: [userId], references: [id])
   session          Session   @relation(fields: [sessionId], references: [id])
   payment          Payment?
+  review           Review?
   createdAt        DateTime  @default(now())
 }
 
@@ -63,4 +70,17 @@ model Payment {
   booking           Booking  @relation(fields: [bookingId], references: [id])
   user              User     @relation(fields: [userId], references: [id])
   createdAt         DateTime @default(now())
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  bookingId String   @unique
+  userId    String
+  sessionId String
+  rating    Int
+  comment   String?
+  booking   Booking  @relation(fields: [bookingId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  session   Session  @relation(fields: [sessionId], references: [id])
+  createdAt DateTime @default(now())
 }

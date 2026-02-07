@@ -2,6 +2,7 @@ import React, { useState } from "react";
 import { Session } from "./sessionApi";
 import { createBookingAndOrder, verifyPayment, PolicyData } from "../bookings/bookingApi";
 import { PolicyModal } from "./PolicyModal";
+import { SessionReviewsDisplay } from "./SessionReviews";
 
 type Props = {
   session: Session;
@@ -205,6 +206,9 @@ export function SessionDetail({ session, token, userName }: Props) {
           </div>
         )}
       </div>
+
+      {/* Reviews section */}
+      <SessionReviewsDisplay sessionId={session.id} />
 
       {/* Policy Modal */}
       {showPolicy && (

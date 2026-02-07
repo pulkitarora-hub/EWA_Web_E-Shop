@@ -1,5 +1,6 @@
 import React, { useEffect, useState } from "react";
 import { fetchSessions, Session } from "./sessionApi";
+import { ReviewBadge } from "./SessionReviews";
 
 type Props = {
   onSelect: (session: Session) => void;
@@ -91,11 +92,14 @@ export function SessionList({ onSelect }: Props) {
                 </svg>
                 <span>{timeStr}</span>
               </div>
-              <div className="mt-4 text-sm font-semibold text-brand-600 group-hover:text-brand-700 flex items-center gap-1">
-                Book session
-                <svg className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
-                </svg>
+              <div className="mt-3 flex items-center justify-between">
+                <ReviewBadge sessionId={session.id} />
+                <span className="text-sm font-semibold text-brand-600 group-hover:text-brand-700 flex items-center gap-1">
+                  Book session
+                  <svg className="w-4 h-4 group-hover:translate-x-0.5 transition-transform" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                    <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5l7 7-7 7" />
+                  </svg>
+                </span>
               </div>
             </button>
           );

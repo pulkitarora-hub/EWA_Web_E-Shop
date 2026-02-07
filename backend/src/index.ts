@@ -5,8 +5,9 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import Razorpay from "razorpay";
 import { PrismaClient } from "@prisma/client";
-import { sendBookingConfirmation } from "./email.js";
+import { sendBookingConfirmation, sendSessionReminder } from "./email.js";
 import { OAuth2Client } from "google-auth-library";
+import cron from "node-cron";
 
 dotenv.config();
 
@@ -399,6 +400,137 @@ app.post("/payments/verify", authMiddleware(), async (req, res) => {
   return res.json({ booking: updated });
 });
 
+// ─── My Bookings ─────────────────────────────────────────────────────────────
+
+app.get("/my-bookings", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const bookings = await prisma.booking.findMany({
+    where: { userId: user.id },
+    orderBy: { createdAt: "desc" },
+    include: {
+      session: true,
+      review: true,
+    },
+  });
+  return res.json({ bookings });
+});
+
+// ─── Cancel Booking ──────────────────────────────────────────────────────────
+
+app.post("/bookings/:id/cancel", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+  const { reason } = req.body || {};
+
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+    include: { session: true },
+  });
+
+  if (!booking || booking.userId !== user.id) {
+    return res.status(404).json({ error: "booking_not_found" });
+  }
+
+  if (booking.status === "cancelled") {
+    return res.status(400).json({ error: "already_cancelled" });
+  }
+
+  if (booking.status !== "paid") {
+    return res.status(400).json({ error: "only_paid_bookings_can_be_cancelled" });
+  }
+
+  // Check 24h window
+  const sessionTime = new Date(booking.session.startTime).getTime();
+  const now = Date.now();
+  const hoursUntilSession = (sessionTime - now) / (1000 * 60 * 60);
+
+  if (hoursUntilSession < 24) {
+    return res.status(400).json({
+      error: "cancellation_window_closed",
+      message: "Bookings can only be cancelled at least 24 hours before the session.",
+    });
+  }
+
+  const updated = await prisma.booking.update({
+    where: { id },
+    data: {
+      status: "cancelled",
+      cancelledAt: new Date(),
+      cancelReason: reason || null,
+    },
+    include: { session: true },
+  });
+
+  return res.json({ booking: updated });
+});
+
+// ─── Reviews ─────────────────────────────────────────────────────────────────
+
+app.post("/bookings/:id/review", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+  const { id } = req.params;
+  const { rating, comment } = req.body || {};
+
+  if (!rating || rating < 1 || rating > 5) {
+    return res.status(400).json({ error: "rating_required", message: "Rating must be 1-5." });
+  }
+
+  const booking = await prisma.booking.findUnique({
+    where: { id },
+    include: { session: true, review: true },
+  });
+
+  if (!booking || booking.userId !== user.id) {
+    return res.status(404).json({ error: "booking_not_found" });
+  }
+
+  if (booking.status !== "paid") {
+    return res.status(400).json({ error: "booking_not_paid" });
+  }
+
+  // Session must be in the past
+  const sessionTime = new Date(booking.session.startTime).getTime();
+  if (sessionTime > Date.now()) {
+    return res.status(400).json({
+      error: "session_not_completed",
+      message: "You can only review after the session has taken place.",
+    });
+  }
+
+  if (booking.review) {
+    return res.status(400).json({ error: "already_reviewed" });
+  }
+
+  const review = await prisma.review.create({
+    data: {
+      bookingId: booking.id,
+      userId: user.id,
+      sessionId: booking.sessionId,
+      rating: Number(rating),
+      comment: comment || null,
+    },
+  });
+
+  return res.json({ review });
+});
+
+// Public: get reviews for a session
+app.get("/sessions/:id/reviews", async (req, res) => {
+  const { id } = req.params;
+  const reviews = await prisma.review.findMany({
+    where: { sessionId: id },
+    orderBy: { createdAt: "desc" },
+    include: {
+      user: { select: { name: true, avatarUrl: true } },
+    },
+  });
+  const avg =
+    reviews.length > 0
+      ? reviews.reduce((sum, r) => sum + r.rating, 0) / reviews.length
+      : 0;
+  return res.json({ reviews, averageRating: Math.round(avg * 10) / 10, count: reviews.length });
+});
+
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
 app.get("/admin/users", authMiddleware(), adminMiddleware(), async (_req, res) => {
@@ -469,8 +601,72 @@ async function autoSeed() {
   }
 }
 
+// ─── Session Reminders (cron) ────────────────────────────────────────────────
+
+async function sendReminders() {
+  const now = Date.now();
+  const in1h = new Date(now + 1 * 60 * 60 * 1000);
+  const in25h = new Date(now + 25 * 60 * 60 * 1000);
+
+  // Find paid bookings with sessions in the next 25 hours that haven't been reminded yet
+  const bookings = await prisma.booking.findMany({
+    where: {
+      status: "paid",
+      session: {
+        startTime: { lte: in25h, gt: new Date() },
+      },
+      OR: [{ reminder24hSent: false }, { reminder1hSent: false }],
+    },
+    include: {
+      session: true,
+      user: true,
+    },
+  });
+
+  for (const booking of bookings) {
+    const sessionTime = new Date(booking.session.startTime).getTime();
+    const hoursUntil = (sessionTime - now) / (1000 * 60 * 60);
+
+    // 24h reminder: send when session is between 23-25 hours away
+    if (!booking.reminder24hSent && hoursUntil <= 25 && hoursUntil > 1.5) {
+      try {
+        await sendSessionReminder(booking.user, booking.session, 24);
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { reminder24hSent: true },
+        });
+        console.log(`24h reminder sent for booking ${booking.id}`);
+      } catch (err) {
+        console.error(`24h reminder failed for booking ${booking.id}:`, err);
+      }
+    }
+
+    // 1h reminder: send when session is within 1.5 hours
+    if (!booking.reminder1hSent && hoursUntil <= 1.5) {
+      try {
+        await sendSessionReminder(booking.user, booking.session, 1);
+        await prisma.booking.update({
+          where: { id: booking.id },
+          data: { reminder1hSent: true },
+        });
+        console.log(`1h reminder sent for booking ${booking.id}`);
+      } catch (err) {
+        console.error(`1h reminder failed for booking ${booking.id}:`, err);
+      }
+    }
+  }
+}
+
+// Run reminder check every 10 minutes
+cron.schedule("*/10 * * * *", () => {
+  console.log("Running session reminder check...");
+  sendReminders().catch((err) => console.error("Reminder cron error:", err));
+});
+
 const port = Number(process.env.PORT || 4000);
 app.listen(port, () => {
   console.log(`API running on http://localhost:${port}`);
   autoSeed().catch((err) => console.error("Auto-seed failed:", err));
+  // Run reminders once on startup as well
+  sendReminders().catch((err) => console.error("Initial reminder check failed:", err));
 });

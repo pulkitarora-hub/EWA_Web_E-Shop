@@ -9,20 +9,23 @@ import { SessionDetail } from "./features/sessions/SessionDetail";
 import { Session } from "./features/sessions/sessionApi";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { ProfilePage } from "./features/profile/ProfilePage";
+import { MyBookings } from "./features/bookings/MyBookings";
 
-type View = "sessions" | "profile" | "admin";
+type View = "sessions" | "bookings" | "profile" | "admin";
 
 function Navbar({
   user,
   onLogout,
   onShowAdmin,
   onShowProfile,
+  onShowBookings,
   activeView,
 }: {
   user: User;
   onLogout: () => void;
   onShowAdmin?: () => void;
   onShowProfile: () => void;
+  onShowBookings: () => void;
   activeView: View;
 }) {
   return (
@@ -36,6 +39,16 @@ function Navbar({
           />
         </div>
         <div className="flex items-center gap-2 sm:gap-3">
+          <button
+            onClick={onShowBookings}
+            className={`text-sm px-3 py-1.5 rounded-lg font-medium transition-colors ${
+              activeView === "bookings"
+                ? "bg-brand-500 text-white"
+                : "text-brand-300 hover:bg-deep-light hover:text-brand-200"
+            }`}
+          >
+            My Bookings
+          </button>
           {user.isAdmin && onShowAdmin && (
             <button
               onClick={onShowAdmin}
@@ -188,6 +201,10 @@ export function App() {
               }
             : undefined
         }
+        onShowBookings={() => {
+          setActiveView(activeView === "bookings" ? "sessions" : "bookings");
+          setSelectedSession(null);
+        }}
         onShowProfile={() => {
           setActiveView(activeView === "profile" ? "sessions" : "profile");
           setSelectedSession(null);
@@ -198,6 +215,8 @@ export function App() {
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {activeView === "admin" && user.isAdmin ? (
           <AdminDashboard isAdmin={user.isAdmin} token={token} />
+        ) : activeView === "bookings" ? (
+          <MyBookings token={token} />
         ) : activeView === "profile" ? (
           <ProfilePage
             user={user}

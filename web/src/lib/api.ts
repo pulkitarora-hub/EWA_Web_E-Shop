@@ -120,6 +120,75 @@ export async function verifyPayment(
   });
 }
 
+// ─── My Bookings ─────────────────────────────────────────────────────────────
+
+export type BookingWithSession = {
+  id: string;
+  userId: string;
+  sessionId: string;
+  status: string;
+  amount: number;
+  currency: string;
+  paidAt?: string | null;
+  cancelledAt?: string | null;
+  cancelReason?: string | null;
+  createdAt: string;
+  session: Session;
+  review?: ReviewData | null;
+};
+
+export type ReviewData = {
+  id: string;
+  rating: number;
+  comment?: string | null;
+  createdAt: string;
+};
+
+export type SessionReviews = {
+  reviews: Array<{
+    id: string;
+    rating: number;
+    comment?: string | null;
+    createdAt: string;
+    user: { name?: string | null; avatarUrl?: string | null };
+  }>;
+  averageRating: number;
+  count: number;
+};
+
+export async function fetchMyBookings(token: string) {
+  return request<{ bookings: BookingWithSession[] }>("/my-bookings", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function cancelBooking(token: string, bookingId: string, reason?: string) {
+  return request<{ booking: BookingWithSession }>(`/bookings/${bookingId}/cancel`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ reason }),
+  });
+}
+
+export async function submitReview(
+  token: string,
+  bookingId: string,
+  rating: number,
+  comment?: string
+) {
+  return request<{ review: ReviewData }>(`/bookings/${bookingId}/review`, {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify({ rating, comment }),
+  });
+}
+
+export async function fetchSessionReviews(sessionId: string) {
+  return request<SessionReviews>(`/sessions/${sessionId}/reviews`);
+}
+
+// ─── Admin ───────────────────────────────────────────────────────────────────
+
 export async function fetchAdminUsers(token: string) {
   return request<{ users: User[] }>("/admin/users", {
     headers: authHeaders(token),
