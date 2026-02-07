@@ -1,0 +1,61 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id                  String   @id @default(uuid())
+  phone               String   @unique
+  email               String?
+  name                String?
+  goal                String?
+  onboardingComplete  Boolean  @default(false)
+  isAdmin             Boolean  @default(false)
+  bookings            Booking[]
+  payments            Payment[]
+  createdAt           DateTime @default(now())
+  updatedAt           DateTime @updatedAt
+}
+
+model Session {
+  id         String   @id @default(uuid())
+  title      String
+  host       String
+  startTime  DateTime
+  price      Int
+  currency   String
+  tidycalUrl String?
+  bookings   Booking[]
+  createdAt  DateTime @default(now())
+}
+
+model Booking {
+  id              String   @id @default(uuid())
+  userId          String
+  sessionId       String
+  status          String
+  amount          Int
+  currency        String
+  razorpayOrderId String
+  paidAt          DateTime?
+  user            User     @relation(fields: [userId], references: [id])
+  session         Session  @relation(fields: [sessionId], references: [id])
+  payment         Payment?
+  createdAt       DateTime @default(now())
+}
+
+model Payment {
+  id                String   @id @default(uuid())
+  bookingId         String   @unique
+  userId            String
+  razorpayPaymentId String   @unique
+  razorpayOrderId   String
+  status            String
+  booking           Booking  @relation(fields: [bookingId], references: [id])
+  user              User     @relation(fields: [userId], references: [id])
+  createdAt         DateTime @default(now())
+}
