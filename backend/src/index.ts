@@ -8,6 +8,9 @@ import { PrismaClient } from "@prisma/client";
 import { sendBookingConfirmation, sendSessionReminder } from "./email.js";
 import { OAuth2Client } from "google-auth-library";
 import cron from "node-cron";
+import helmet from "helmet";
+import rateLimit from "express-rate-limit";
+import validator from "validator";
 
 dotenv.config();
 
@@ -20,6 +23,7 @@ const ALLOWED_ORIGINS = [
   "https://book.evolvewithavadhi.com",
 ];
 
+app.use(helmet());
 app.use(
   cors({
     origin: (origin, callback) => {
@@ -27,7 +31,7 @@ app.use(
       if (!origin || ALLOWED_ORIGINS.includes(origin)) {
         callback(null, true);
       } else {
-        callback(null, true); // Allow all for now; tighten later if needed
+        callback(new Error("Not allowed by CORS"));
       }
     },
     credentials: true,
@@ -49,6 +53,18 @@ const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || "";
 const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || "";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
+if (IS_PRODUCTION && JWT_SECRET === "dev-secret") {
+  throw new Error("JWT_SECRET must be set to a secure value in production");
+}
+
+const authLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "rate_limited" },
+});
+
 const googleClient = GOOGLE_CLIENT_ID
   ? new OAuth2Client(GOOGLE_CLIENT_ID)
   : null;
@@ -59,7 +75,23 @@ const razorpay =
     : null;
 
 function signToken(userId: string) {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "7d" });
+  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "24h" });
+}
+
+function isValidPhone(phone?: string | null) {
+  if (!phone) return false;
+  return /^\+?[1-9]\d{7,14}$/.test(phone);
+}
+
+function isValidEmail(email?: string | null) {
+  if (!email) return false;
+  return validator.isEmail(email);
+}
+
+function sanitizeText(value?: string | null, maxLength = 1000) {
+  if (value === undefined || value === null) return null;
+  const trimmed = value.trim().slice(0, maxLength);
+  return validator.escape(trimmed);
 }
 
 async function getUserFromToken(token?: string) {
@@ -97,7 +129,7 @@ function adminMiddleware() {
 
 // ─── Google Sign-In ───────────────────────────────────────────────────────────
 
-app.post("/auth/google", async (req, res) => {
+app.post("/auth/google", authLimiter, async (req, res) => {
   const { idToken } = req.body || {};
   if (!idToken) {
     return res.status(400).json({ error: "id_token_required" });
@@ -146,10 +178,13 @@ app.post("/auth/google", async (req, res) => {
 
 // ─── Phone OTP ────────────────────────────────────────────────────────────────
 
-app.post("/auth/request-otp", async (req, res) => {
+app.post("/auth/request-otp", authLimiter, async (req, res) => {
   const { phone } = req.body || {};
   if (!phone) {
     return res.status(400).json({ error: "phone_required" });
+  }
+  if (!isValidPhone(phone)) {
+    return res.status(400).json({ error: "invalid_phone" });
   }
 
   // Production: use MSG91
@@ -188,12 +223,16 @@ app.post("/auth/request-otp", async (req, res) => {
   return res.json({ otpToken, otp });
 });
 
-app.post("/auth/verify-otp", async (req, res) => {
+app.post("/auth/verify-otp", authLimiter, async (req, res) => {
   const { otpToken, otp } = req.body || {};
 
   let phone: string;
 
   // Production: verify via MSG91
+  if (!/^\d{6}$/.test(String(otp || ""))) {
+    return res.status(400).json({ error: "invalid_otp" });
+  }
+
   if (IS_PRODUCTION && MSG91_AUTH_KEY) {
     try {
       const response = await fetch(
@@ -250,11 +289,23 @@ app.patch("/users/me", authMiddleware(), async (req, res) => {
   const user = (req as any).user;
   const { name, goal, email, phone, onboardingComplete } = req.body || {};
   const data: any = {};
+  if (name !== undefined && name && name.length > 100) {
+    return res.status(400).json({ error: "name_too_long" });
+  }
+  if (goal !== undefined && goal && goal.length > 500) {
+    return res.status(400).json({ error: "goal_too_long" });
+  }
+  if (email !== undefined && email && !isValidEmail(email)) {
+    return res.status(400).json({ error: "invalid_email" });
+  }
   if (name !== undefined) data.name = name;
   if (goal !== undefined) data.goal = goal;
   if (email !== undefined) data.email = email;
   // Sanitize phone: empty string → null, otherwise keep value
   if (phone !== undefined) data.phone = phone?.trim() || null;
+  if (data.phone && !isValidPhone(data.phone)) {
+    return res.status(400).json({ error: "invalid_phone" });
+  }
   if (onboardingComplete !== undefined) data.onboardingComplete = Boolean(onboardingComplete);
 
   // If a phone is being set, check it's not already taken by another user
@@ -575,6 +626,9 @@ app.post("/payments/verify", authMiddleware(), async (req, res) => {
   if (!booking || booking.userId !== user.id) {
     return res.status(404).json({ error: "booking_not_found" });
   }
+  if (booking.status === "paid") {
+    return res.status(400).json({ error: "already_paid" });
+  }
   if (booking.razorpayOrderId !== razorpayOrderId) {
     return res.status(400).json({ error: "order_mismatch" });
   }
@@ -683,10 +737,12 @@ app.post("/bookings/:id/review", authMiddleware(), async (req, res) => {
   const user = (req as any).user;
   const { id } = req.params;
   const { rating, comment } = req.body || {};
+  const ratingValue = Number(rating);
 
-  if (!rating || rating < 1 || rating > 5) {
+  if (!Number.isFinite(ratingValue) || ratingValue < 1 || ratingValue > 5) {
     return res.status(400).json({ error: "rating_required", message: "Rating must be 1-5." });
   }
+  const sanitizedComment = sanitizeText(comment, 1000);
 
   const booking = await prisma.booking.findUnique({
     where: { id },
@@ -719,8 +775,8 @@ app.post("/bookings/:id/review", authMiddleware(), async (req, res) => {
       bookingId: booking.id,
       userId: user.id,
       sessionId: booking.sessionId,
-      rating: Number(rating),
-      comment: comment || null,
+      rating: ratingValue,
+      comment: sanitizedComment,
     },
   });
 
@@ -1050,10 +1106,23 @@ app.patch("/admin/users/:id", authMiddleware(), adminMiddleware(), async (req, r
   const { name, goal, email, phone, onboardingComplete, isAdmin } = req.body || {};
   const data: any = {};
 
+  if (name !== undefined && name && name.length > 100) {
+    return res.status(400).json({ error: "name_too_long" });
+  }
+  if (goal !== undefined && goal && goal.length > 500) {
+    return res.status(400).json({ error: "goal_too_long" });
+  }
+  if (email !== undefined && email && !isValidEmail(email)) {
+    return res.status(400).json({ error: "invalid_email" });
+  }
+
   if (name !== undefined) data.name = name;
   if (goal !== undefined) data.goal = goal;
   if (email !== undefined) data.email = email;
   if (phone !== undefined) data.phone = phone?.trim() || null;
+  if (data.phone && !isValidPhone(data.phone)) {
+    return res.status(400).json({ error: "invalid_phone" });
+  }
   if (onboardingComplete !== undefined) data.onboardingComplete = Boolean(onboardingComplete);
   if (isAdmin !== undefined) data.isAdmin = Boolean(isAdmin);
 
