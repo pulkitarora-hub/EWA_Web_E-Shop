@@ -284,6 +284,10 @@ app.post("/auth/forgot-password", authLimiter, async (req, res) => {
     return res.json({ ok: true });
   }
 
+  if (user.resetTokenSentAt && Date.now() - user.resetTokenSentAt.getTime() < 2 * 60 * 1000) {
+    return res.json({ ok: true });
+  }
+
   const token = crypto.randomBytes(32).toString("hex");
   const tokenHash = hashToken(token);
   const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
@@ -293,6 +297,7 @@ app.post("/auth/forgot-password", authLimiter, async (req, res) => {
     data: {
       resetTokenHash: tokenHash,
       resetTokenExpiresAt: expiresAt,
+      resetTokenSentAt: new Date(),
     },
   });
 
@@ -337,6 +342,7 @@ app.post("/auth/reset-password", authLimiter, async (req, res) => {
       passwordHash,
       resetTokenHash: null,
       resetTokenExpiresAt: null,
+      resetTokenSentAt: null,
     },
   });
 

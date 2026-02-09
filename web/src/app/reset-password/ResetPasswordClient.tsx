@@ -43,8 +43,8 @@
      setMessage(null);
      try {
        await resetPassword({ email, token, password });
-       setMessage("Password reset successful. You can now sign in.");
-       setTimeout(() => router.push("/"), 1500);
+       setMessage("Password reset successful. Redirecting...");
+       setTimeout(() => router.push("/reset-success"), 1200);
      } catch (err: any) {
        setError(err.message || "Reset failed.");
      } finally {
