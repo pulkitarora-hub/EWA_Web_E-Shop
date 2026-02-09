@@ -91,6 +91,20 @@ export async function loginWithPassword(data: {
   });
 }
 
+export async function requestPasswordReset(email: string) {
+  return request<{ ok: boolean }>("/auth/forgot-password", {
+    method: "POST",
+    body: JSON.stringify({ email }),
+  });
+}
+
+export async function resetPassword(input: { email: string; token: string; password: string }) {
+  return request<{ ok: boolean }>("/auth/reset-password", {
+    method: "POST",
+    body: JSON.stringify(input),
+  });
+}
+
 export async function requestOtp(phone: string) {
   return request<{ otpToken: string; otp?: string }>("/auth/request-otp", {
     method: "POST",

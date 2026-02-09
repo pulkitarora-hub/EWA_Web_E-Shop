@@ -16,6 +16,8 @@ model User {
   name                String?
   goal                String?
   passwordHash        String?
+  resetTokenHash      String?
+  resetTokenExpiresAt DateTime?
   referralCode        String?  @unique
   referredByCode      String?
   onboardingComplete  Boolean  @default(false)

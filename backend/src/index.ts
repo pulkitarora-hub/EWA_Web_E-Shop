@@ -5,7 +5,7 @@ import crypto from "crypto";
 import jwt from "jsonwebtoken";
 import Razorpay from "razorpay";
 import { PrismaClient } from "@prisma/client";
-import { sendBookingConfirmation, sendSessionReminder } from "./email.js";
+import { sendBookingConfirmation, sendSessionReminder, sendPasswordResetEmail } from "./email.js";
 import { OAuth2Client } from "google-auth-library";
 import cron from "node-cron";
 import helmet from "helmet";
@@ -98,6 +98,10 @@ function sanitizeText(value?: string | null, maxLength = 1000) {
 function isStrongPassword(password?: string | null) {
   if (!password) return false;
   return password.length >= 8;
+}
+
+function hashToken(token: string) {
+  return crypto.createHash("sha256").update(token).digest("hex");
 }
 
 async function getUserFromToken(token?: string) {
@@ -206,7 +210,7 @@ app.post("/auth/signup", authLimiter, async (req, res) => {
   const normalizedPhone = phone ? String(phone).trim() : null;
 
   if (normalizedEmail) {
-    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    const existing = await prisma.user.findFirst({ where: { email: normalizedEmail } });
     if (existing) {
       return res.status(409).json({ error: "email_taken" });
     }
@@ -246,10 +250,16 @@ app.post("/auth/login", authLimiter, async (req, res) => {
     return res.status(400).json({ error: "password_required" });
   }
 
-  const where = email
-    ? { email: String(email).toLowerCase().trim() }
-    : { phone: String(phone).trim() };
-  const user = await prisma.user.findUnique({ where });
+  const normalizedEmail = email ? String(email).toLowerCase().trim() : null;
+  const normalizedPhone = phone ? String(phone).trim() : null;
+  const user = await prisma.user.findFirst({
+    where: {
+      OR: [
+        normalizedEmail ? { email: normalizedEmail } : undefined,
+        normalizedPhone ? { phone: normalizedPhone } : undefined,
+      ].filter(Boolean) as any,
+    },
+  });
   if (!user || !user.passwordHash) {
     return res.status(401).json({ error: "invalid_credentials" });
   }
@@ -260,6 +270,77 @@ app.post("/auth/login", authLimiter, async (req, res) => {
 
   const token = signToken(user.id);
   return res.json({ token, user });
+});
+
+app.post("/auth/forgot-password", authLimiter, async (req, res) => {
+  const { email } = req.body || {};
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ error: "invalid_email" });
+  }
+  const normalizedEmail = String(email).toLowerCase().trim();
+  const user = await prisma.user.findFirst({ where: { email: normalizedEmail } });
+
+  if (!user || !user.passwordHash) {
+    return res.json({ ok: true });
+  }
+
+  const token = crypto.randomBytes(32).toString("hex");
+  const tokenHash = hashToken(token);
+  const expiresAt = new Date(Date.now() + 60 * 60 * 1000);
+
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      resetTokenHash: tokenHash,
+      resetTokenExpiresAt: expiresAt,
+    },
+  });
+
+  await sendPasswordResetEmail(
+    { name: user.name, email: user.email },
+    token
+  );
+
+  return res.json({ ok: true });
+});
+
+app.post("/auth/reset-password", authLimiter, async (req, res) => {
+  const { email, token, password } = req.body || {};
+  if (!email || !isValidEmail(email)) {
+    return res.status(400).json({ error: "invalid_email" });
+  }
+  if (!token) {
+    return res.status(400).json({ error: "token_required" });
+  }
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({ error: "weak_password" });
+  }
+
+  const normalizedEmail = String(email).toLowerCase().trim();
+  const tokenHash = hashToken(String(token));
+  const user = await prisma.user.findFirst({
+    where: {
+      email: normalizedEmail,
+      resetTokenHash: tokenHash,
+      resetTokenExpiresAt: { gt: new Date() },
+    },
+  });
+
+  if (!user) {
+    return res.status(400).json({ error: "invalid_or_expired_token" });
+  }
+
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  await prisma.user.update({
+    where: { id: user.id },
+    data: {
+      passwordHash,
+      resetTokenHash: null,
+      resetTokenExpiresAt: null,
+    },
+  });
+
+  return res.json({ ok: true });
 });
 
 // ─── Phone OTP ────────────────────────────────────────────────────────────────

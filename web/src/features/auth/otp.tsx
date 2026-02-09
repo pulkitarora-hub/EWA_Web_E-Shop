@@ -1,5 +1,13 @@
 import React, { useState } from "react";
-import { requestOtp, verifyOtp, googleAuth, loginWithPassword, signUpWithPassword, User } from "../../lib/api";
+import {
+  requestOtp,
+  verifyOtp,
+  googleAuth,
+  loginWithPassword,
+  signUpWithPassword,
+  requestPasswordReset,
+  User,
+} from "../../lib/api";
 import { GoogleLogin, CredentialResponse } from "@react-oauth/google";
 import PhoneInput from "react-phone-number-input";
 import flags from "react-phone-number-input/flags";
@@ -30,8 +38,10 @@ export function OtpLogin({ onAuthed }: Props) {
   const [otpToken, setOtpToken] = useState<string | null>(null);
   const [otpPreview, setOtpPreview] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [showPhoneLogin, setShowPhoneLogin] = useState(false);
   const [showOtpLogin, setShowOtpLogin] = useState(false);
+  const [showForgot, setShowForgot] = useState(false);
+  const [forgotEmail, setForgotEmail] = useState("");
+  const [forgotMessage, setForgotMessage] = useState<string | null>(null);
 
   async function handleGoogleSuccess(response: CredentialResponse) {
     if (!response.credential) return;
@@ -98,6 +108,21 @@ export function OtpLogin({ onAuthed }: Props) {
       }
     } catch (err: any) {
       setError(err.message || "Authentication failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  async function handleForgotPassword() {
+    if (!forgotEmail) return;
+    setLoading(true);
+    setError(null);
+    setForgotMessage(null);
+    try {
+      await requestPasswordReset(forgotEmail);
+      setForgotMessage("If an account exists for this email, a reset link has been sent.");
+    } catch (err: any) {
+      setError(err.message || "Failed to send reset email.");
     } finally {
       setLoading(false);
     }
@@ -266,16 +291,38 @@ export function OtpLogin({ onAuthed }: Props) {
             >
               {showOtpLogin ? "Hide OTP login" : "Use OTP instead"}
             </button>
-            <span className="text-xs text-charcoal-lighter">
-              {authMode === "signup" ? "Already have an account?" : "New here?"}
-              <button
-                onClick={() => setAuthMode(authMode === "signup" ? "signin" : "signup")}
-                className="ml-1 text-brand-600 hover:text-brand-700 font-semibold"
-              >
-                {authMode === "signup" ? "Sign in" : "Create one"}
-              </button>
-            </span>
+            <button
+              onClick={() => setShowForgot(!showForgot)}
+              className="text-xs text-brand-600 hover:text-brand-700 font-semibold"
+            >
+              Forgot password?
+            </button>
           </div>
+
+          {showForgot && (
+            <div className="mt-4 rounded-xl border border-warm-200 bg-warm-50/40 p-4">
+              <label className="block text-sm font-medium text-charcoal-light mb-1.5">
+                Email for reset link
+              </label>
+              <input
+                type="email"
+                value={forgotEmail}
+                onChange={(e) => setForgotEmail(e.target.value)}
+                placeholder="you@example.com"
+                className="w-full px-4 py-3 rounded-xl border border-warm-300 bg-white text-charcoal placeholder:text-charcoal-lighter/50 focus:outline-none focus:ring-2 focus:ring-brand-400/40 focus:border-brand-400 transition"
+              />
+              <button
+                onClick={handleForgotPassword}
+                disabled={loading || !forgotEmail}
+                className="w-full mt-3 py-2.5 px-4 bg-deep hover:bg-deep-light disabled:bg-warm-300 disabled:cursor-not-allowed text-white text-sm font-semibold rounded-xl transition"
+              >
+                {loading ? "Sending..." : "Send reset link"}
+              </button>
+              {forgotMessage && (
+                <p className="text-xs text-sage-600 mt-2">{forgotMessage}</p>
+              )}
+            </div>
+          )}
 
           {/* Phone OTP Section */}
           {showOtpLogin && (

@@ -205,3 +205,43 @@ export async function sendSessionReminder(
     }
   }
 }
+
+export async function sendPasswordResetEmail(user: UserInfo, token: string) {
+  if (!user.email) {
+    console.log("No email for user, skipping password reset email.");
+    return;
+  }
+  if (!resend) {
+    console.log("Resend not configured, skipping email. Set RESEND_API_KEY.");
+    return;
+  }
+
+  const baseUrl = process.env.FRONTEND_BASE_URL || "http://localhost:3000";
+  const url = `${baseUrl}/reset-password?token=${encodeURIComponent(token)}&email=${encodeURIComponent(
+    user.email
+  )}`;
+
+  const html = `
+    <h2>Reset your password</h2>
+    <p>Hi ${user.name || "there"},</p>
+    <p>We received a request to reset your password. Click below to set a new one:</p>
+    <p>
+      <a href="${url}" style="background:#6b46c1;color:white;padding:10px 18px;text-decoration:none;border-radius:6px;">
+        Reset Password
+      </a>
+    </p>
+    <p>If you didn't request this, you can ignore this email.</p>
+  `;
+
+  try {
+    await resend.emails.send({
+      from: FROM_EMAIL,
+      to: user.email,
+      subject: "Reset your password",
+      html,
+    });
+    console.log(`Password reset email sent to ${user.email}`);
+  } catch (err) {
+    console.error("Failed to send password reset email:", err);
+  }
+}
