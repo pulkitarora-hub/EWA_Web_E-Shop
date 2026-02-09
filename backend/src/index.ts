@@ -45,7 +45,7 @@ const otpStore = new Map<
   { phone: string; otp: string; expiresAt: number }
 >();
 
-const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
+let JWT_SECRET = process.env.JWT_SECRET || "";
 const RAZORPAY_KEY_ID = process.env.RAZORPAY_KEY_ID || "";
 const RAZORPAY_KEY_SECRET = process.env.RAZORPAY_KEY_SECRET || "";
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || "";
@@ -53,8 +53,13 @@ const MSG91_AUTH_KEY = process.env.MSG91_AUTH_KEY || "";
 const MSG91_TEMPLATE_ID = process.env.MSG91_TEMPLATE_ID || "";
 const IS_PRODUCTION = process.env.NODE_ENV === "production";
 
-if (IS_PRODUCTION && JWT_SECRET === "dev-secret") {
-  throw new Error("JWT_SECRET must be set to a secure value in production");
+if (!JWT_SECRET) {
+  if (IS_PRODUCTION) {
+    JWT_SECRET = crypto.randomBytes(32).toString("hex");
+    console.warn("JWT_SECRET not set in production; generated ephemeral secret.");
+  } else {
+    JWT_SECRET = "dev-secret";
+  }
 }
 
 const authLimiter = rateLimit({
