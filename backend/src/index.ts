@@ -959,9 +959,263 @@ app.post("/subscriptions/:id/pause", authMiddleware(), async (req, res) => {
 
 // ─── Admin ────────────────────────────────────────────────────────────────────
 
-app.get("/admin/users", authMiddleware(), adminMiddleware(), async (_req, res) => {
-  const users = await prisma.user.findMany({ orderBy: { createdAt: "desc" } });
-  return res.json({ users });
+async function logAdminAction(
+  adminUserId: string,
+  action: string,
+  targetUserId?: string | null,
+  metadata?: Record<string, any>
+) {
+  try {
+    await prisma.adminAuditLog.create({
+      data: {
+        adminUserId,
+        targetUserId: targetUserId || null,
+        action,
+        metadata: metadata ? metadata : undefined,
+      },
+    });
+  } catch (err) {
+    console.error("Admin audit log error:", err);
+  }
+}
+
+app.get("/admin/users", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const {
+    search,
+    isAdmin,
+    onboardingComplete,
+    page = "1",
+    pageSize = "25",
+    sortBy = "createdAt",
+    sortDir = "desc",
+    startDate,
+    endDate,
+  } = req.query || {};
+  const where: any = {};
+
+  if (typeof search === "string" && search.trim()) {
+    const term = search.trim();
+    where.OR = [
+      { name: { contains: term, mode: "insensitive" } },
+      { email: { contains: term, mode: "insensitive" } },
+      { phone: { contains: term, mode: "insensitive" } },
+      { referralCode: { contains: term, mode: "insensitive" } },
+      { googleId: { contains: term, mode: "insensitive" } },
+    ];
+  }
+
+  if (typeof isAdmin === "string") {
+    where.isAdmin = isAdmin === "true";
+  }
+
+  if (typeof onboardingComplete === "string") {
+    where.onboardingComplete = onboardingComplete === "true";
+  }
+
+  const createdAt: any = {};
+  if (typeof startDate === "string" && startDate) {
+    const parsed = new Date(startDate);
+    if (!Number.isNaN(parsed.getTime())) createdAt.gte = parsed;
+  }
+  if (typeof endDate === "string" && endDate) {
+    const parsed = new Date(endDate);
+    if (!Number.isNaN(parsed.getTime())) createdAt.lte = parsed;
+  }
+  if (Object.keys(createdAt).length > 0) {
+    where.createdAt = createdAt;
+  }
+
+  const pageNum = Math.max(1, Number(page) || 1);
+  const perPage = Math.min(100, Math.max(1, Number(pageSize) || 25));
+  const skip = (pageNum - 1) * perPage;
+  const orderField = sortBy === "name" ? "name" : "createdAt";
+  const orderDirection = sortDir === "asc" ? "asc" : "desc";
+
+  const [total, users] = await Promise.all([
+    prisma.user.count({ where }),
+    prisma.user.findMany({
+      where,
+      orderBy: { [orderField]: orderDirection },
+      skip,
+      take: perPage,
+    }),
+  ]);
+
+  return res.json({ users, page: pageNum, pageSize: perPage, total });
+});
+
+app.patch("/admin/users/:id", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const adminUser = (req as any).user;
+  const { id } = req.params;
+  const { name, goal, email, phone, onboardingComplete, isAdmin } = req.body || {};
+  const data: any = {};
+
+  if (name !== undefined) data.name = name;
+  if (goal !== undefined) data.goal = goal;
+  if (email !== undefined) data.email = email;
+  if (phone !== undefined) data.phone = phone?.trim() || null;
+  if (onboardingComplete !== undefined) data.onboardingComplete = Boolean(onboardingComplete);
+  if (isAdmin !== undefined) data.isAdmin = Boolean(isAdmin);
+
+  if (adminUser.id === id && data.isAdmin === false) {
+    return res.status(400).json({ error: "cannot_remove_own_admin" });
+  }
+
+  const existingUser = await prisma.user.findUnique({ where: { id } });
+  if (!existingUser) {
+    return res.status(404).json({ error: "user_not_found" });
+  }
+
+  if (data.phone) {
+    const existing = await prisma.user.findUnique({ where: { phone: data.phone } });
+    if (existing && existing.id !== id) {
+      return res.status(409).json({
+        error: "phone_taken",
+        message: "This phone number is already linked to another account.",
+      });
+    }
+  }
+
+  try {
+    const updated = await prisma.user.update({
+      where: { id },
+      data,
+    });
+
+    const changes: Record<string, { from: any; to: any }> = {};
+    Object.keys(data).forEach((key) => {
+      const prev = (existingUser as any)[key];
+      const next = (updated as any)[key];
+      if (prev !== next) changes[key] = { from: prev, to: next };
+    });
+
+    if (Object.keys(changes).length > 0) {
+      await logAdminAction(adminUser.id, "user_update", updated.id, { changes });
+    }
+
+    return res.json({ user: updated });
+  } catch (err: any) {
+    if (err.code === "P2002") {
+      return res.status(409).json({
+        error: "unique_conflict",
+        message: "This phone number is already linked to another account.",
+      });
+    }
+    console.error("Admin update user error:", err);
+    return res.status(500).json({ error: "update_failed" });
+  }
+});
+
+app.get("/admin/users/:id", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const { id } = req.params;
+  const user = await prisma.user.findUnique({ where: { id } });
+  if (!user) {
+    return res.status(404).json({ error: "user_not_found" });
+  }
+
+  const [bookings, payments, userPackages, subscriptions, referralsMade, referralsReceived, auditLogs] =
+    await Promise.all([
+      prisma.booking.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: "desc" },
+        include: { session: true },
+        take: 10,
+      }),
+      prisma.payment.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      prisma.userPackage.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: "desc" },
+        include: { package: true },
+        take: 10,
+      }),
+      prisma.subscription.findMany({
+        where: { userId: id },
+        orderBy: { createdAt: "desc" },
+        take: 10,
+      }),
+      prisma.referral.findMany({
+        where: { referrerId: id },
+        orderBy: { createdAt: "desc" },
+        include: { referee: true },
+        take: 10,
+      }),
+      prisma.referral.findMany({
+        where: { refereeId: id },
+        orderBy: { createdAt: "desc" },
+        include: { referrer: true },
+        take: 10,
+      }),
+      prisma.adminAuditLog.findMany({
+        where: { targetUserId: id },
+        orderBy: { createdAt: "desc" },
+        include: { adminUser: true },
+        take: 20,
+      }),
+    ]);
+
+  return res.json({
+    user,
+    bookings,
+    payments,
+    userPackages,
+    subscriptions,
+    referralsMade,
+    referralsReceived,
+    auditLogs,
+  });
+});
+
+app.post("/admin/users/bulk", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const adminUser = (req as any).user;
+  const { ids, action } = req.body || {};
+
+  if (!Array.isArray(ids) || ids.length === 0) {
+    return res.status(400).json({ error: "missing_ids" });
+  }
+
+  const normalizedIds = Array.from(new Set(ids.filter((id) => typeof id === "string")));
+  if (normalizedIds.length === 0) {
+    return res.status(400).json({ error: "invalid_ids" });
+  }
+
+  const actionMap: Record<string, any> = {
+    set_admin: { isAdmin: true },
+    remove_admin: { isAdmin: false },
+    mark_onboarded: { onboardingComplete: true },
+    mark_not_onboarded: { onboardingComplete: false },
+  };
+
+  const updateData = actionMap[action];
+  if (!updateData) {
+    return res.status(400).json({ error: "invalid_action" });
+  }
+
+  if (action === "remove_admin" && normalizedIds.includes(adminUser.id)) {
+    return res.status(400).json({ error: "cannot_remove_own_admin" });
+  }
+
+  const now = new Date();
+  const logs = normalizedIds.map((targetId) => ({
+    adminUserId: adminUser.id,
+    targetUserId: targetId,
+    action: "user_bulk_update",
+    metadata: { action, updateData },
+    createdAt: now,
+  }));
+
+  const [result] = await prisma.$transaction([
+    prisma.user.updateMany({
+      where: { id: { in: normalizedIds } },
+      data: updateData,
+    }),
+    prisma.adminAuditLog.createMany({ data: logs }),
+  ]);
+
+  return res.json({ updatedCount: result.count });
 });
 
 app.get(
@@ -989,6 +1243,37 @@ app.get(
     return res.json({ payments });
   }
 );
+
+app.get("/admin/reviews", authMiddleware(), adminMiddleware(), async (req, res) => {
+  const { search, rating } = req.query || {};
+  const where: any = {};
+
+  if (typeof rating === "string" && rating.trim()) {
+    const parsed = Number(rating);
+    if (!Number.isNaN(parsed)) {
+      where.rating = parsed;
+    }
+  }
+
+  if (typeof search === "string" && search.trim()) {
+    const term = search.trim();
+    where.OR = [
+      { comment: { contains: term, mode: "insensitive" } },
+      { session: { title: { contains: term, mode: "insensitive" } } },
+      { user: { name: { contains: term, mode: "insensitive" } } },
+      { user: { email: { contains: term, mode: "insensitive" } } },
+      { user: { phone: { contains: term, mode: "insensitive" } } },
+    ];
+  }
+
+  const reviews = await prisma.review.findMany({
+    where,
+    orderBy: { createdAt: "desc" },
+    include: { user: true, session: true, booking: true },
+  });
+
+  return res.json({ reviews });
+});
 
 // ─── Admin Promo Codes ───────────────────────────────────────────────────────
 
@@ -1264,6 +1549,7 @@ cron.schedule("0 0 * * *", () => {
   console.log("Processing subscriptions...");
   processSubscriptions().catch((err) => console.error("Subscription cron error:", err));
 });
+
 
 const port = Number(process.env.PORT || 4000);
 app.listen(port, () => {

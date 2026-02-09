@@ -11,6 +11,27 @@ export type User = {
   goal?: string | null;
   onboardingComplete: boolean;
   isAdmin: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+};
+
+export type AdminAuditLog = {
+  id: string;
+  action: string;
+  metadata?: any;
+  createdAt: string;
+  adminUser: User;
+};
+
+export type AdminUserDetail = {
+  user: User;
+  bookings: any[];
+  payments: any[];
+  userPackages: any[];
+  subscriptions: any[];
+  referralsMade: any[];
+  referralsReceived: any[];
+  auditLogs: AdminAuditLog[];
 };
 
 export type Session = {
@@ -338,9 +359,76 @@ export async function applyReferralCode(token: string, code: string) {
 
 // ─── Admin ───────────────────────────────────────────────────────────────────
 
-export async function fetchAdminUsers(token: string) {
-  return request<{ users: User[] }>("/admin/users", {
+export async function fetchAdminUsers(
+  token: string,
+  params?: {
+    search?: string;
+    isAdmin?: boolean | "all";
+    onboardingComplete?: boolean | "all";
+    page?: number;
+    pageSize?: number;
+    sortBy?: "createdAt" | "name";
+    sortDir?: "asc" | "desc";
+    startDate?: string;
+    endDate?: string;
+  }
+) {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (params?.isAdmin !== undefined && params.isAdmin !== "all") {
+    query.set("isAdmin", String(params.isAdmin));
+  }
+  if (params?.onboardingComplete !== undefined && params.onboardingComplete !== "all") {
+    query.set("onboardingComplete", String(params.onboardingComplete));
+  }
+  if (params?.page) query.set("page", String(params.page));
+  if (params?.pageSize) query.set("pageSize", String(params.pageSize));
+  if (params?.sortBy) query.set("sortBy", params.sortBy);
+  if (params?.sortDir) query.set("sortDir", params.sortDir);
+  if (params?.startDate) query.set("startDate", params.startDate);
+  if (params?.endDate) query.set("endDate", params.endDate);
+  const qs = query.toString();
+  return request<{ users: User[]; page: number; pageSize: number; total: number }>(
+    `/admin/users${qs ? `?${qs}` : ""}`,
+    {
+      headers: authHeaders(token),
+    }
+  );
+}
+
+export async function fetchAdminUserDetail(token: string, id: string) {
+  return request<AdminUserDetail>(`/admin/users/${id}`, {
     headers: authHeaders(token),
+  });
+}
+
+export async function updateAdminUser(
+  token: string,
+  id: string,
+  data: {
+    name?: string;
+    goal?: string;
+    email?: string;
+    phone?: string;
+    onboardingComplete?: boolean;
+    isAdmin?: boolean;
+  }
+) {
+  return request<{ user: User }>(`/admin/users/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function bulkUpdateAdminUsers(
+  token: string,
+  input: { ids: string[]; action: "set_admin" | "remove_admin" | "mark_onboarded" | "mark_not_onboarded" }
+) {
+  return request<{ updatedCount: number }>("/admin/users/bulk", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(input),
   });
 }
 
@@ -352,6 +440,19 @@ export async function fetchAdminBookings(token: string) {
 
 export async function fetchAdminPayments(token: string) {
   return request<{ payments: any[] }>("/admin/payments", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchAdminReviews(
+  token: string,
+  params?: { search?: string; rating?: number }
+) {
+  const query = new URLSearchParams();
+  if (params?.search) query.set("search", params.search);
+  if (typeof params?.rating === "number") query.set("rating", String(params.rating));
+  const qs = query.toString();
+  return request<{ reviews: any[] }>(`/admin/reviews${qs ? `?${qs}` : ""}`, {
     headers: authHeaders(token),
   });
 }
