@@ -15,6 +15,7 @@ model User {
   email               String?
   name                String?
   goal                String?
+  passwordHash        String?
   referralCode        String?  @unique
   referredByCode      String?
   onboardingComplete  Boolean  @default(false)

@@ -11,6 +11,7 @@ import cron from "node-cron";
 import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import validator from "validator";
+import bcrypt from "bcryptjs";
 
 dotenv.config();
 
@@ -94,6 +95,11 @@ function sanitizeText(value?: string | null, maxLength = 1000) {
   return validator.escape(trimmed);
 }
 
+function isStrongPassword(password?: string | null) {
+  if (!password) return false;
+  return password.length >= 8;
+}
+
 async function getUserFromToken(token?: string) {
   if (!token) return null;
   try {
@@ -174,6 +180,86 @@ app.post("/auth/google", authLimiter, async (req, res) => {
     console.error("Google auth error:", err);
     return res.status(400).json({ error: "google_auth_failed" });
   }
+});
+
+// ─── Email/Password Auth ───────────────────────────────────────────────────────
+
+app.post("/auth/signup", authLimiter, async (req, res) => {
+  const { email, phone, password, name } = req.body || {};
+  if (!email && !phone) {
+    return res.status(400).json({ error: "email_or_phone_required" });
+  }
+  if (email && !isValidEmail(email)) {
+    return res.status(400).json({ error: "invalid_email" });
+  }
+  if (phone && !isValidPhone(phone)) {
+    return res.status(400).json({ error: "invalid_phone" });
+  }
+  if (!isStrongPassword(password)) {
+    return res.status(400).json({ error: "weak_password" });
+  }
+  if (name && name.length > 100) {
+    return res.status(400).json({ error: "name_too_long" });
+  }
+
+  const normalizedEmail = email ? String(email).toLowerCase().trim() : null;
+  const normalizedPhone = phone ? String(phone).trim() : null;
+
+  if (normalizedEmail) {
+    const existing = await prisma.user.findUnique({ where: { email: normalizedEmail } });
+    if (existing) {
+      return res.status(409).json({ error: "email_taken" });
+    }
+  }
+  if (normalizedPhone) {
+    const existing = await prisma.user.findUnique({ where: { phone: normalizedPhone } });
+    if (existing) {
+      return res.status(409).json({ error: "phone_taken" });
+    }
+  }
+
+  const passwordHash = await bcrypt.hash(String(password), 10);
+  const user = await prisma.user.create({
+    data: {
+      email: normalizedEmail,
+      phone: normalizedPhone,
+      name: name || null,
+      passwordHash,
+    },
+  });
+  const token = signToken(user.id);
+  return res.json({ token, user });
+});
+
+app.post("/auth/login", authLimiter, async (req, res) => {
+  const { email, phone, password } = req.body || {};
+  if (!email && !phone) {
+    return res.status(400).json({ error: "email_or_phone_required" });
+  }
+  if (email && !isValidEmail(email)) {
+    return res.status(400).json({ error: "invalid_email" });
+  }
+  if (phone && !isValidPhone(phone)) {
+    return res.status(400).json({ error: "invalid_phone" });
+  }
+  if (!password) {
+    return res.status(400).json({ error: "password_required" });
+  }
+
+  const where = email
+    ? { email: String(email).toLowerCase().trim() }
+    : { phone: String(phone).trim() };
+  const user = await prisma.user.findUnique({ where });
+  if (!user || !user.passwordHash) {
+    return res.status(401).json({ error: "invalid_credentials" });
+  }
+  const matches = await bcrypt.compare(String(password), user.passwordHash);
+  if (!matches) {
+    return res.status(401).json({ error: "invalid_credentials" });
+  }
+
+  const token = signToken(user.id);
+  return res.json({ token, user });
 });
 
 // ─── Phone OTP ────────────────────────────────────────────────────────────────

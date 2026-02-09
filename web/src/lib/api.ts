@@ -68,6 +68,29 @@ export async function googleAuth(idToken: string) {
   });
 }
 
+export async function signUpWithPassword(data: {
+  email?: string;
+  phone?: string;
+  password: string;
+  name?: string;
+}) {
+  return request<{ token: string; user: User }>("/auth/signup", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
+export async function loginWithPassword(data: {
+  email?: string;
+  phone?: string;
+  password: string;
+}) {
+  return request<{ token: string; user: User }>("/auth/login", {
+    method: "POST",
+    body: JSON.stringify(data),
+  });
+}
+
 export async function requestOtp(phone: string) {
   return request<{ otpToken: string; otp?: string }>("/auth/request-otp", {
     method: "POST",
