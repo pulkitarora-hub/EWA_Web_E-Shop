@@ -9,6 +9,7 @@ type Props = {
   session: Session;
   token: string;
   userName: string;
+  hasSignedPolicy?: boolean;
 };
 
 declare global {
@@ -26,7 +27,7 @@ function Spinner() {
   );
 }
 
-export function SessionDetail({ session, token, userName }: Props) {
+export function SessionDetail({ session, token, userName, hasSignedPolicy }: Props) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error" | "cancelled">("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -70,11 +71,7 @@ export function SessionDetail({ session, token, userName }: Props) {
     setPromoError(null);
   }
 
-  async function handlePolicyConfirm(policyData: {
-    signedName: string;
-    signatureDataUrl: string;
-    agreedAt: string;
-  }) {
+  async function proceedBooking(policyData?: PolicyData) {
     setShowPolicy(false);
     setLoading(true);
     setStatus("idle");
@@ -87,12 +84,6 @@ export function SessionDetail({ session, token, userName }: Props) {
         return;
       }
 
-      const pd: PolicyData = {
-        policySignedName: policyData.signedName,
-        policySignature: policyData.signatureDataUrl,
-        policyAgreedAt: policyData.agreedAt,
-      };
-
       const extras: { promoCode?: string; useCredit?: boolean } = {};
       if (useCredit) {
         extras.useCredit = true;
@@ -100,7 +91,7 @@ export function SessionDetail({ session, token, userName }: Props) {
         extras.promoCode = promoResult.code;
       }
 
-      const order = await createBookingAndOrder(token, session, pd, extras);
+      const order = await createBookingAndOrder(token, session, policyData, extras);
 
       // Credit booking — no Razorpay needed
       if (order.usedCredit) {
@@ -151,6 +142,23 @@ export function SessionDetail({ session, token, userName }: Props) {
     } finally {
       setLoading(false);
     }
+  }
+
+  async function handlePolicyConfirm(policyData: {
+    signedName: string;
+    signatureDataUrl: string;
+    agreedAt: string;
+  }) {
+    const pd: PolicyData = {
+      policySignedName: policyData.signedName,
+      policySignature: policyData.signatureDataUrl,
+      policyAgreedAt: policyData.agreedAt,
+    };
+    await proceedBooking(pd);
+  }
+
+  async function handleBookWithoutPolicy() {
+    await proceedBooking(undefined);
   }
 
   const date = new Date(session.startTime);
@@ -278,7 +286,7 @@ export function SessionDetail({ session, token, userName }: Props) {
           {/* Book button */}
           {status !== "success" && (
             <button
-              onClick={() => setShowPolicy(true)}
+              onClick={hasSignedPolicy ? handleBookWithoutPolicy : () => setShowPolicy(true)}
               disabled={loading}
               className="w-full py-3.5 px-4 bg-brand-500 hover:bg-brand-600 disabled:bg-warm-300 disabled:cursor-not-allowed text-white font-semibold rounded-xl shadow-md shadow-brand-500/20 flex items-center justify-center gap-2 transition text-base"
             >

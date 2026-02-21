@@ -622,6 +622,27 @@ app.post("/bookings", authMiddleware(), async (req, res) => {
     return res.status(404).json({ error: "session_not_found" });
   }
 
+  // Policy: use body if provided, else use user's stored policy if they've signed before
+  const hasPolicyInBody = !!(policySignedName && policyAgreedAt);
+  const useStoredPolicy = !hasPolicyInBody && user.policySignedAt;
+  if (!hasPolicyInBody && !useStoredPolicy) {
+    return res.status(400).json({
+      error: "policy_required",
+      message: "Please agree to the policy to continue.",
+    });
+  }
+  const bookingPolicy = hasPolicyInBody
+    ? {
+        policySignedName: policySignedName || null,
+        policySignature: policySignature || null,
+        policyAgreedAt: policyAgreedAt ? new Date(policyAgreedAt) : null,
+      }
+    : {
+        policySignedName: (user as any).policySignedName || user.name || null,
+        policySignature: null,
+        policyAgreedAt: (user as any).policySignedAt,
+      };
+
   let finalAmount = session.price;
   let promoCodeId: string | null = null;
   let promoDiscount = 0;
@@ -705,11 +726,21 @@ app.post("/bookings", authMiddleware(), async (req, res) => {
         currency: session.currency,
         usedCredit: true,
         paidAt: new Date(),
-        policySignedName: policySignedName || null,
-        policySignature: policySignature || null,
-        policyAgreedAt: policyAgreedAt ? new Date(policyAgreedAt) : null,
+        policySignedName: bookingPolicy.policySignedName,
+        policySignature: bookingPolicy.policySignature,
+        policyAgreedAt: bookingPolicy.policyAgreedAt,
       },
     });
+
+    if (hasPolicyInBody && !(user as any).policySignedAt) {
+      await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          policySignedAt: bookingPolicy.policyAgreedAt || new Date(),
+          policySignedName: bookingPolicy.policySignedName,
+        },
+      });
+    }
 
     await prisma.creditUsage.create({
       data: { userPackageId: pkg.id, bookingId: booking.id },
@@ -760,11 +791,21 @@ app.post("/bookings", authMiddleware(), async (req, res) => {
       promoCodeId,
       promoDiscount,
       referralDiscount,
-      policySignedName: policySignedName || null,
-      policySignature: policySignature || null,
-      policyAgreedAt: policyAgreedAt ? new Date(policyAgreedAt) : null,
+      policySignedName: bookingPolicy.policySignedName,
+      policySignature: bookingPolicy.policySignature,
+      policyAgreedAt: bookingPolicy.policyAgreedAt,
     },
   });
+
+  if (hasPolicyInBody && !(user as any).policySignedAt) {
+    await prisma.user.update({
+      where: { id: user.id },
+      data: {
+        policySignedAt: bookingPolicy.policyAgreedAt || new Date(),
+        policySignedName: bookingPolicy.policySignedName,
+      },
+    });
+  }
 
   // Track promo usage
   if (promoCodeId) {

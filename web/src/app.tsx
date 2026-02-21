@@ -266,7 +266,12 @@ export function App() {
                   </svg>
                   Back to sessions
                 </button>
-                <SessionDetail session={selectedSession} token={token} userName={user.name || ""} />
+                <SessionDetail
+                  session={selectedSession}
+                  token={token}
+                  userName={user.name || ""}
+                  hasSignedPolicy={!!user.policySignedAt}
+                />
               </div>
             ) : (
               <SessionList onSelect={setSelectedSession} />

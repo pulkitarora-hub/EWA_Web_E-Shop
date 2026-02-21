@@ -11,6 +11,8 @@ export type User = {
   goal?: string | null;
   onboardingComplete: boolean;
   isAdmin: boolean;
+  policySignedAt?: string | null;
+  policySignedName?: string | null;
   createdAt?: string;
   updatedAt?: string;
 };

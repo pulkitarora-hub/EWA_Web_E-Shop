@@ -23,6 +23,8 @@ model User {
   referredByCode      String?
   onboardingComplete  Boolean  @default(false)
   isAdmin             Boolean  @default(false)
+  policySignedAt      DateTime?
+  policySignedName    String?
   bookings            Booking[]
   payments            Payment[]
   reviews             Review[]
