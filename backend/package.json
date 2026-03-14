@@ -10,7 +10,8 @@
     "prisma:migrate": "prisma migrate dev",
     "prisma:studio": "prisma studio",
     "seed": "tsx prisma/seed.ts",
-    "set-admin": "tsx scripts/setAdmin.ts"
+    "set-admin": "tsx scripts/setAdmin.ts",
+    "postinstall": "prisma generate"
   },
   "dependencies": {
     "@prisma/client": "^5.19.1",
