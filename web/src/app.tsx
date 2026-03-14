@@ -335,6 +335,9 @@ export function App() {
           </p>
         </div>
       </footer>
+      
+      {/* PWA Install Prompt */}
+      <PWAInstallPrompt />
     </div>
   );
 }
