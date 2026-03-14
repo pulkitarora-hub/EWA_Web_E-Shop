@@ -224,14 +224,18 @@ export async function saveZoomConfig(
   therapistId?: string,
   isDefault: boolean = true
 ) {
+  console.log("saveZoomConfig called:", { accountId, clientId, therapistId, isDefault });
+  
   const encryptedSecret = encrypt(clientSecret);
 
   const existing = therapistId
     ? await prisma.zoomConfig.findUnique({ where: { therapistId } })
     : await prisma.zoomConfig.findFirst({ where: { isDefault: true } });
 
+  console.log("Existing config found:", existing ? existing.id : "none");
+
   if (existing) {
-    return prisma.zoomConfig.update({
+    const updated = await prisma.zoomConfig.update({
       where: { id: existing.id },
       data: {
         accountId,
@@ -241,9 +245,11 @@ export async function saveZoomConfig(
         tokenExpiry: null,
       },
     });
+    console.log("Updated config:", updated.id);
+    return updated;
   }
 
-  return prisma.zoomConfig.create({
+  const created = await prisma.zoomConfig.create({
     data: {
       accountId,
       clientId,
@@ -252,34 +258,43 @@ export async function saveZoomConfig(
       isDefault,
     },
   });
+  console.log("Created config:", created.id);
+  return created;
 }
 
 export async function getZoomConfigStatus() {
-  const config = await prisma.zoomConfig.findFirst({
-    where: { isDefault: true },
-    select: {
-      id: true,
-      accountId: true,
-      clientId: true,
-      isDefault: true,
-      tokenExpiry: true,
-      createdAt: true,
-      updatedAt: true,
-    },
-  });
+  try {
+    const config = await prisma.zoomConfig.findFirst({
+      where: { isDefault: true },
+      select: {
+        id: true,
+        accountId: true,
+        clientId: true,
+        isDefault: true,
+        tokenExpiry: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
-  return {
-    configured: !!config,
-    config: config
-      ? {
-          id: config.id,
-          accountId: config.accountId,
-          clientId: config.clientId,
-          hasValidToken: config.tokenExpiry ? config.tokenExpiry > new Date() : false,
-          updatedAt: config.updatedAt,
-        }
-      : null,
-  };
+    console.log("Zoom config query result:", config ? "found" : "not found");
+
+    return {
+      configured: !!config,
+      config: config
+        ? {
+            id: config.id,
+            accountId: config.accountId,
+            clientId: config.clientId,
+            hasValidToken: config.tokenExpiry ? config.tokenExpiry > new Date() : false,
+            updatedAt: config.updatedAt,
+          }
+        : null,
+    };
+  } catch (error) {
+    console.error("getZoomConfigStatus error:", error);
+    return { configured: false, config: null };
+  }
 }
 
 export async function testZoomConnection(): Promise<{ success: boolean; error?: string }> {

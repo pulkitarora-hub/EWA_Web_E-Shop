@@ -128,48 +128,53 @@ router.get(
   authMiddleware(),
   adminMiddleware(),
   async (_req, res) => {
-    const now = new Date();
-    const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
+    try {
+      const now = new Date();
+      const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-    const [
-      totalBookings,
-      paidBookings,
-      cancelledBookings,
-      totalRevenue,
-      activeClients,
-      totalNotes,
-      therapistCount,
-    ] = await Promise.all([
-      prisma.booking.count(),
-      prisma.booking.count({ where: { status: "paid" } }),
-      prisma.booking.count({ where: { status: "cancelled" } }),
-      prisma.booking.aggregate({ where: { status: "paid" }, _sum: { amount: true } }),
-      prisma.booking
-        .groupBy({
-          by: ["userId"],
-          where: { status: "paid", createdAt: { gte: thirtyDaysAgo } },
-        })
-        .then((g) => g.length),
-      prisma.therapyNote.count(),
-      prisma.user.count({ where: { role: "THERAPIST" } }),
-    ]);
-
-    const completionRate = totalBookings > 0 ? Math.round((paidBookings / totalBookings) * 100) : 0;
-    const noteCompletionRate = paidBookings > 0 ? Math.round((totalNotes / paidBookings) * 100) : 0;
-
-    return res.json({
-      analytics: {
+      const [
         totalBookings,
         paidBookings,
         cancelledBookings,
-        completionRate,
-        totalRevenue: totalRevenue._sum.amount || 0,
+        totalRevenue,
         activeClients,
         totalNotes,
-        noteCompletionRate,
         therapistCount,
-      },
-    });
+      ] = await Promise.all([
+        prisma.booking.count(),
+        prisma.booking.count({ where: { status: "paid" } }),
+        prisma.booking.count({ where: { status: "cancelled" } }),
+        prisma.booking.aggregate({ where: { status: "paid" }, _sum: { amount: true } }),
+        prisma.booking
+          .groupBy({
+            by: ["userId"],
+            where: { status: "paid", createdAt: { gte: thirtyDaysAgo } },
+          })
+          .then((g) => g.length),
+        prisma.therapyNote.count().catch(() => 0),
+        prisma.user.count({ where: { role: "THERAPIST" } }).catch(() => 0),
+      ]);
+
+      const completionRate = totalBookings > 0 ? Math.round((paidBookings / totalBookings) * 100) : 0;
+      const noteCompletionRate = paidBookings > 0 ? Math.round((totalNotes / paidBookings) * 100) : 0;
+
+      return res.json({
+        analytics: {
+          totalBookings,
+          paidBookings,
+          cancelledBookings,
+          completionRate,
+          totalRevenue: totalRevenue._sum.amount || 0,
+          activeClients,
+          totalNotes,
+          noteCompletionRate,
+          therapistCount,
+        },
+      });
+    } catch (error) {
+      console.error("Admin analytics error:", error);
+      return res.status(500).json({ error: "failed_to_fetch_analytics" });
+    }
   }
 );
 

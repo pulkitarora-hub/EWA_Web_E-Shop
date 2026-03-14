@@ -1337,68 +1337,83 @@ async function logAdminAction(
 }
 
 app.get("/admin/users", authMiddleware(), adminMiddleware(), async (req, res) => {
-  const {
-    search,
-    isAdmin,
-    onboardingComplete,
-    page = "1",
-    pageSize = "25",
-    sortBy = "createdAt",
-    sortDir = "desc",
-    startDate,
-    endDate,
-  } = req.query || {};
-  const where: any = {};
+  try {
+    const {
+      search,
+      isAdmin,
+      onboardingComplete,
+      page = "1",
+      pageSize = "25",
+      sortBy = "createdAt",
+      sortDir = "desc",
+      startDate,
+      endDate,
+    } = req.query || {};
+    const where: any = {};
 
-  if (typeof search === "string" && search.trim()) {
-    const term = search.trim();
-    where.OR = [
-      { name: { contains: term, mode: "insensitive" } },
-      { email: { contains: term, mode: "insensitive" } },
-      { phone: { contains: term, mode: "insensitive" } },
-      { referralCode: { contains: term, mode: "insensitive" } },
-      { googleId: { contains: term, mode: "insensitive" } },
-    ];
+    if (typeof search === "string" && search.trim()) {
+      const term = search.trim();
+      where.OR = [
+        { name: { contains: term, mode: "insensitive" } },
+        { email: { contains: term, mode: "insensitive" } },
+        { phone: { contains: term, mode: "insensitive" } },
+        { referralCode: { contains: term, mode: "insensitive" } },
+      ];
+    }
+
+    if (typeof isAdmin === "string") {
+      where.isAdmin = isAdmin === "true";
+    }
+
+    if (typeof onboardingComplete === "string") {
+      where.onboardingComplete = onboardingComplete === "true";
+    }
+
+    const createdAt: any = {};
+    if (typeof startDate === "string" && startDate) {
+      const parsed = new Date(startDate);
+      if (!Number.isNaN(parsed.getTime())) createdAt.gte = parsed;
+    }
+    if (typeof endDate === "string" && endDate) {
+      const parsed = new Date(endDate);
+      if (!Number.isNaN(parsed.getTime())) createdAt.lte = parsed;
+    }
+    if (Object.keys(createdAt).length > 0) {
+      where.createdAt = createdAt;
+    }
+
+    const pageNum = Math.max(1, Number(page) || 1);
+    const perPage = Math.min(100, Math.max(1, Number(pageSize) || 25));
+    const skip = (pageNum - 1) * perPage;
+    const orderField = sortBy === "name" ? "name" : "createdAt";
+    const orderDirection = sortDir === "asc" ? "asc" : "desc";
+
+    const [total, users] = await Promise.all([
+      prisma.user.count({ where }),
+      prisma.user.findMany({
+        where,
+        orderBy: { [orderField]: orderDirection },
+        skip,
+        take: perPage,
+        select: {
+          id: true,
+          name: true,
+          email: true,
+          phone: true,
+          role: true,
+          isAdmin: true,
+          onboardingComplete: true,
+          createdAt: true,
+          updatedAt: true,
+        },
+      }),
+    ]);
+
+    return res.json({ users, page: pageNum, pageSize: perPage, total });
+  } catch (error) {
+    console.error("Admin users error:", error);
+    return res.status(500).json({ error: "failed_to_fetch_users" });
   }
-
-  if (typeof isAdmin === "string") {
-    where.isAdmin = isAdmin === "true";
-  }
-
-  if (typeof onboardingComplete === "string") {
-    where.onboardingComplete = onboardingComplete === "true";
-  }
-
-  const createdAt: any = {};
-  if (typeof startDate === "string" && startDate) {
-    const parsed = new Date(startDate);
-    if (!Number.isNaN(parsed.getTime())) createdAt.gte = parsed;
-  }
-  if (typeof endDate === "string" && endDate) {
-    const parsed = new Date(endDate);
-    if (!Number.isNaN(parsed.getTime())) createdAt.lte = parsed;
-  }
-  if (Object.keys(createdAt).length > 0) {
-    where.createdAt = createdAt;
-  }
-
-  const pageNum = Math.max(1, Number(page) || 1);
-  const perPage = Math.min(100, Math.max(1, Number(pageSize) || 25));
-  const skip = (pageNum - 1) * perPage;
-  const orderField = sortBy === "name" ? "name" : "createdAt";
-  const orderDirection = sortDir === "asc" ? "asc" : "desc";
-
-  const [total, users] = await Promise.all([
-    prisma.user.count({ where }),
-    prisma.user.findMany({
-      where,
-      orderBy: { [orderField]: orderDirection },
-      skip,
-      take: perPage,
-    }),
-  ]);
-
-  return res.json({ users, page: pageNum, pageSize: perPage, total });
 });
 
 app.patch("/admin/users/:id", authMiddleware(), adminMiddleware(), async (req, res) => {
