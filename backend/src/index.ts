@@ -1880,3 +1880,64 @@ app.listen(port, () => {
   // Run reminders once on startup as well
   sendReminders().catch((err) => console.error("Initial reminder check failed:", err));
 });
+
+// ─── Admin Seed Endpoint (protected) ─────────────────────────────────────────
+app.post("/admin/seed-sessions", async (req, res) => {
+  const { secret } = req.body || {};
+  const SEED_SECRET = process.env.SEED_SECRET || "temp-seed-secret-2024";
+  
+  if (secret !== SEED_SECRET) {
+    return res.status(401).json({ error: "unauthorized" });
+  }
+
+  try {
+    // TidyCal URL mappings
+    const TIDYCAL_URLS = {
+      online45: "https://tidycal.com/avadhisharma/individual-therapy-45-minutes-online",
+      online60: "https://tidycal.com/avadhisharma/ic-off-ses-1hr",
+      online75: "https://tidycal.com/avadhisharma/ic-off-ses-1hr",
+      online90: "https://tidycal.com/avadhisharma/ic-off-ses-1hr",
+    };
+
+    // Sessions to create/update based on policy sheet
+    const sessionsData = [
+      // Standalone Clarity Sessions
+      { title: "Standalone Clarity Session - 45 min", host: "Avadhi Sharma", price: 3500, currency: "INR", tidycalUrl: TIDYCAL_URLS.online45 },
+      { title: "Standalone Clarity Session - 60 min", host: "Avadhi Sharma", price: 4000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online60 },
+      { title: "Standalone Clarity Session - 75 min", host: "Avadhi Sharma", price: 4500, currency: "INR", tidycalUrl: TIDYCAL_URLS.online75 },
+      { title: "Standalone Clarity Session - 90 min", host: "Avadhi Sharma", price: 5000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online90 },
+      // Steady Inner Balance (4 sessions/month)
+      { title: "Steady Inner Balance - 45 min", host: "Avadhi Sharma", price: 12000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online45 },
+      { title: "Steady Inner Balance - 60 min", host: "Avadhi Sharma", price: 14000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online60 },
+      { title: "Steady Inner Balance - 75 min", host: "Avadhi Sharma", price: 16000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online75 },
+      { title: "Steady Inner Balance - 90 min", host: "Avadhi Sharma", price: 18000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online90 },
+      // Deep Work Subscription (8 sessions/month)
+      { title: "Deep Work Subscription - 45 min", host: "Avadhi Sharma", price: 20000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online45 },
+      { title: "Deep Work Subscription - 60 min", host: "Avadhi Sharma", price: 24000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online60 },
+      { title: "Deep Work Subscription - 75 min", host: "Avadhi Sharma", price: 28000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online75 },
+      { title: "Deep Work Subscription - 90 min", host: "Avadhi Sharma", price: 32000, currency: "INR", tidycalUrl: TIDYCAL_URLS.online90 },
+    ];
+
+    const results = [];
+    for (const sessionData of sessionsData) {
+      const existing = await prisma.session.findFirst({ where: { title: sessionData.title } });
+      if (existing) {
+        await prisma.session.update({
+          where: { id: existing.id },
+          data: sessionData,
+        });
+        results.push({ title: sessionData.title, action: "updated" });
+      } else {
+        await prisma.session.create({
+          data: { ...sessionData, startTime: new Date() },
+        });
+        results.push({ title: sessionData.title, action: "created" });
+      }
+    }
+
+    res.json({ success: true, results });
+  } catch (error: any) {
+    console.error("Seed error:", error);
+    res.status(500).json({ error: error.message });
+  }
+});
