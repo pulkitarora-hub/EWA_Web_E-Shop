@@ -24,6 +24,9 @@ dotenv.config();
 
 const app = express();
 
+// Trust proxy - required for Railway/reverse proxy deployments
+app.set("trust proxy", 1);
+
 // CORS origins - configurable via environment variable
 const ALLOWED_ORIGINS = process.env.ALLOWED_ORIGINS
   ? process.env.ALLOWED_ORIGINS.split(",").map((o) => o.trim())
