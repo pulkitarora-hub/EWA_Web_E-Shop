@@ -29,7 +29,7 @@ export function PWAInstallPrompt() {
     // Improved iOS detection (works with newer iOS versions)
     const userAgent = window.navigator.userAgent.toLowerCase();
     const ios = /iphone|ipad|ipod/.test(userAgent) || 
-      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1); // iPad with iPadOS
+      (navigator.platform === 'MacIntel' && navigator.maxTouchPoints > 1);
     setIsIOS(ios);
 
     // Listen for beforeinstallprompt (Android/Chrome)
@@ -37,10 +37,8 @@ export function PWAInstallPrompt() {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       
-      // Check if dismissed in current session only
       const dismissedThisSession = sessionStorage.getItem("pwa-prompt-dismissed-session");
       if (!dismissedThisSession) {
-        // Show prompt after a short delay
         setTimeout(() => setShowPrompt(true), 2000);
       }
     };
@@ -83,17 +81,24 @@ export function PWAInstallPrompt() {
 
   function handleDismiss() {
     setShowPrompt(false);
-    // Only hide for current session - will show again on next visit
     sessionStorage.setItem("pwa-prompt-dismissed-session", "true");
   }
 
-  // For iOS, provide a "I've installed it" option
   function handleIOSInstalled() {
     localStorage.setItem("pwa-installed", "true");
     setShowPrompt(false);
   }
 
   if (isStandalone || !showPrompt) return null;
+
+  // Safari Share Icon (square with arrow pointing up)
+  const SafariShareIcon = () => (
+    <svg className="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8" />
+      <polyline points="16 6 12 2 8 6" />
+      <line x1="12" y1="2" x2="12" y2="15" />
+    </svg>
+  );
 
   return (
     <div className="fixed bottom-0 inset-x-0 p-4 z-50 animate-slide-up safe-area-bottom">
@@ -109,21 +114,28 @@ export function PWAInstallPrompt() {
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="font-semibold text-warm-900 mb-1">
-                Add to Home Screen
+                Install Evolve Wellness
               </h3>
               {isIOS ? (
                 <div className="text-sm text-warm-600 mb-3">
-                  <p className="mb-2">Install this app for the best experience:</p>
-                  <ol className="list-decimal list-inside space-y-1 text-xs">
-                    <li className="flex items-center gap-2">
-                      Tap the <span className="inline-flex items-center px-1.5 py-0.5 bg-blue-100 rounded text-blue-700">
-                        <svg className="w-4 h-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-                          <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M8.684 13.342C8.886 12.938 9 12.482 9 12c0-.482-.114-.938-.316-1.342m0 2.684a3 3 0 110-2.684m0 2.684l6.632 3.316m-6.632-6l6.632-3.316m0 0a3 3 0 105.367-2.684 3 3 0 00-5.367 2.684zm0 9.316a3 3 0 105.368 2.684 3 3 0 00-5.368-2.684z" />
-                        </svg>
-                      </span> Share button
+                  <p className="mb-2">Add to your home screen for the best experience:</p>
+                  <ol className="space-y-2 text-xs">
+                    <li className="flex items-start gap-2">
+                      <span className="flex-shrink-0 w-5 h-5 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs">1</span>
+                      <span>
+                        Tap the <span className="inline-flex items-center gap-1 px-1.5 py-0.5 bg-blue-50 border border-blue-200 rounded text-blue-700 font-medium">
+                          <SafariShareIcon /> Share
+                        </span> button at the <strong>bottom of Safari</strong>
+                      </span>
                     </li>
-                    <li>Scroll and tap <strong>"Add to Home Screen"</strong></li>
-                    <li>Tap <strong>"Add"</strong> in the top right</li>
+                    <li className="flex items-start gap-2">
+                      <span className="flex-shrink-0 w-5 h-5 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs">2</span>
+                      <span>Scroll down and tap <strong>"Add to Home Screen"</strong></span>
+                    </li>
+                    <li className="flex items-start gap-2">
+                      <span className="flex-shrink-0 w-5 h-5 bg-blue-100 rounded flex items-center justify-center text-blue-600 font-bold text-xs">3</span>
+                      <span>Tap <strong>"Add"</strong> in the top right corner</span>
+                    </li>
                   </ol>
                 </div>
               ) : (
@@ -148,7 +160,7 @@ export function PWAInstallPrompt() {
                     onClick={handleIOSInstalled}
                     className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors"
                   >
-                    I've installed it
+                    Done, I've added it
                   </button>
                 )}
                 <button
@@ -171,16 +183,14 @@ export function PWAInstallPrompt() {
           </div>
         </div>
         
-        {/* iOS visual guide */}
+        {/* iOS Safari hint */}
         {isIOS && (
-          <div className="bg-warm-50 px-4 py-3 border-t border-warm-100">
-            <div className="flex items-center justify-center gap-2 text-xs text-warm-500">
-              <svg className="w-5 h-5 text-blue-500" fill="currentColor" viewBox="0 0 24 24">
-                <path d="M12 2C6.477 2 2 6.477 2 12c0 4.991 3.657 9.128 8.438 9.879V14.89h-2.54V12h2.54V9.797c0-2.506 1.492-3.89 3.777-3.89 1.094 0 2.238.195 2.238.195v2.46h-1.26c-1.243 0-1.63.771-1.63 1.562V12h2.773l-.443 2.89h-2.33v6.989C18.343 21.129 22 16.99 22 12c0-5.523-4.477-10-10-10z"/>
+          <div className="bg-amber-50 px-4 py-3 border-t border-amber-100">
+            <div className="flex items-center gap-2 text-xs text-amber-700">
+              <svg className="w-4 h-4 flex-shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M13 16h-1v-4h-1m1-4h.01M21 12a9 9 0 11-18 0 9 9 0 0118 0z" />
               </svg>
-              <span>Works best in Safari</span>
-              <span className="mx-1">•</span>
-              <span>Look for share icon at bottom</span>
+              <span><strong>Note:</strong> You must use Safari browser. The share button <SafariShareIcon /> is at the bottom toolbar.</span>
             </div>
           </div>
         )}

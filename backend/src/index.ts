@@ -1388,26 +1388,28 @@ app.get("/admin/users", authMiddleware(), adminMiddleware(), async (req, res) =>
     const orderField = sortBy === "name" ? "name" : "createdAt";
     const orderDirection = sortDir === "asc" ? "asc" : "desc";
 
-    const [total, users] = await Promise.all([
+    const [total, rawUsers] = await Promise.all([
       prisma.user.count({ where }),
       prisma.user.findMany({
         where,
         orderBy: { [orderField]: orderDirection },
         skip,
         take: perPage,
-        select: {
-          id: true,
-          name: true,
-          email: true,
-          phone: true,
-          role: true,
-          isAdmin: true,
-          onboardingComplete: true,
-          createdAt: true,
-          updatedAt: true,
-        },
       }),
     ]);
+
+    // Strip sensitive fields from response
+    const users = rawUsers.map((u: any) => ({
+      id: u.id,
+      name: u.name,
+      email: u.email,
+      phone: u.phone,
+      role: u.role || "CLIENT",
+      isAdmin: u.isAdmin,
+      onboardingComplete: u.onboardingComplete,
+      createdAt: u.createdAt,
+      updatedAt: u.updatedAt,
+    }));
 
     return res.json({ users, page: pageNum, pageSize: perPage, total });
   } catch (error) {

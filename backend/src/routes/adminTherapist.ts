@@ -152,7 +152,10 @@ router.get(
           })
           .then((g) => g.length),
         prisma.therapyNote.count().catch(() => 0),
-        prisma.user.count({ where: { role: "THERAPIST" } }).catch(() => 0),
+        prisma.user.count({ where: { role: "THERAPIST" } }).catch(() => {
+          // Fallback: count users with therapistProfile if role column doesn't exist
+          return prisma.therapistProfile.count().catch(() => 0);
+        }),
       ]);
 
       const completionRate = totalBookings > 0 ? Math.round((paidBookings / totalBookings) * 100) : 0;
