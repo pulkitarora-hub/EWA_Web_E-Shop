@@ -138,7 +138,6 @@ router.get("/my-notes/:id", authMiddleware(), async (req, res) => {
   return res.json({ note: stripPrivateFields(decryptNote(note)) });
 });
 
-export default router;
 
 // ─── Client Dashboard ─────────────────────────────────────────────────────────
 router.get("/client/dashboard", authMiddleware(), async (req, res) => {
@@ -276,3 +275,5 @@ router.get("/client/dashboard", authMiddleware(), async (req, res) => {
     return res.status(500).json({ error: "dashboard_load_failed" });
   }
 });
+
+export default router;

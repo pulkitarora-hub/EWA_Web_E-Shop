@@ -315,7 +315,6 @@ router.post(
   }
 );
 
-export default router;
 
 // ─── TidyCal Sync Endpoints ───────────────────────────────────────────────────
 
@@ -340,3 +339,5 @@ router.post("/admin/tidycal/sync", authMiddleware(), adminMiddleware(), async (r
     return res.status(500).json({ error: error.message || "sync_failed" });
   }
 });
+
+export default router;
