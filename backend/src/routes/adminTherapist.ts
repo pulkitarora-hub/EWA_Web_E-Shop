@@ -132,15 +132,7 @@ router.get(
       const now = new Date();
       const thirtyDaysAgo = new Date(now.getTime() - 30 * 24 * 60 * 60 * 1000);
 
-      const [
-        totalBookings,
-        paidBookings,
-        cancelledBookings,
-        totalRevenue,
-        activeClients,
-        totalNotes,
-        therapistCount,
-      ] = await Promise.all([
+      const results = await Promise.allSettled([
         prisma.booking.count(),
         prisma.booking.count({ where: { status: "paid" } }),
         prisma.booking.count({ where: { status: "cancelled" } }),
@@ -150,13 +142,21 @@ router.get(
             by: ["userId"],
             where: { status: "paid", createdAt: { gte: thirtyDaysAgo } },
           })
-          .then((g) => g.length),
-        prisma.therapyNote.count().catch(() => 0),
-        prisma.user.count({ where: { role: "THERAPIST" } }).catch(() => {
-          // Fallback: count users with therapistProfile if role column doesn't exist
-          return prisma.therapistProfile.count().catch(() => 0);
-        }),
+          .then((g: any[]) => g.length),
+        prisma.therapyNote.count(),
+        prisma.therapistProfile.count(),
       ]);
+
+      const val = (i: number, fallback: any = 0) =>
+        results[i].status === "fulfilled" ? (results[i] as any).value : fallback;
+
+      const totalBookings = val(0);
+      const paidBookings = val(1);
+      const cancelledBookings = val(2);
+      const revenueResult = val(3, { _sum: { amount: null } });
+      const activeClients = val(4);
+      const totalNotes = val(5);
+      const therapistCount = val(6);
 
       const completionRate = totalBookings > 0 ? Math.round((paidBookings / totalBookings) * 100) : 0;
       const noteCompletionRate = paidBookings > 0 ? Math.round((totalNotes / paidBookings) * 100) : 0;
@@ -167,7 +167,7 @@ router.get(
           paidBookings,
           cancelledBookings,
           completionRate,
-          totalRevenue: totalRevenue._sum.amount || 0,
+          totalRevenue: revenueResult._sum?.amount || 0,
           activeClients,
           totalNotes,
           noteCompletionRate,

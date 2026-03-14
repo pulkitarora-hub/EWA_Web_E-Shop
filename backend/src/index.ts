@@ -1357,7 +1357,6 @@ app.get("/admin/users", authMiddleware(), adminMiddleware(), async (req, res) =>
         { name: { contains: term, mode: "insensitive" } },
         { email: { contains: term, mode: "insensitive" } },
         { phone: { contains: term, mode: "insensitive" } },
-        { referralCode: { contains: term, mode: "insensitive" } },
       ];
     }
 
@@ -1610,11 +1609,29 @@ app.get(
   authMiddleware(),
   adminMiddleware(),
   async (_req, res) => {
-    const bookings = await prisma.booking.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { user: true, session: true },
-    });
-    return res.json({ bookings });
+    try {
+      const bookings = await prisma.booking.findMany({
+        orderBy: { createdAt: "desc" },
+        select: {
+          id: true,
+          userId: true,
+          sessionId: true,
+          status: true,
+          amount: true,
+          currency: true,
+          paidAt: true,
+          cancelledAt: true,
+          cancelReason: true,
+          createdAt: true,
+          user: { select: { id: true, name: true, email: true, phone: true } },
+          session: { select: { id: true, title: true, host: true, startTime: true, price: true } },
+        },
+      });
+      return res.json({ bookings });
+    } catch (error) {
+      console.error("Admin bookings error:", error);
+      return res.status(500).json({ error: "failed_to_fetch_bookings", bookings: [] });
+    }
   }
 );
 
@@ -1623,11 +1640,16 @@ app.get(
   authMiddleware(),
   adminMiddleware(),
   async (_req, res) => {
-    const payments = await prisma.payment.findMany({
-      orderBy: { createdAt: "desc" },
-      include: { user: true, booking: true },
-    });
-    return res.json({ payments });
+    try {
+      const payments = await prisma.payment.findMany({
+        orderBy: { createdAt: "desc" },
+        include: { user: true, booking: true },
+      });
+      return res.json({ payments });
+    } catch (error) {
+      console.error("Admin payments error:", error);
+      return res.status(500).json({ error: "failed_to_fetch_payments", payments: [] });
+    }
   }
 );
 

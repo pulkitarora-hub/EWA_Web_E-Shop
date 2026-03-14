@@ -59,11 +59,19 @@ export function AdminDashboard({ isAdmin, token }: Props) {
   async function loadOverview() {
     setLoading(true);
     try {
-      const [analyticsRes, bookingsRes] = await Promise.all([
+      const [analyticsRes, bookingsRes] = await Promise.allSettled([
         fetchAdminAnalytics(token), fetchAdminBookings(token),
       ]);
-      setAnalytics(analyticsRes.analytics);
-      setRecentBookings(bookingsRes.bookings.slice(0, 5));
+      if (analyticsRes.status === "fulfilled") {
+        setAnalytics(analyticsRes.value.analytics);
+      } else {
+        console.error("Analytics load failed:", analyticsRes.reason);
+      }
+      if (bookingsRes.status === "fulfilled") {
+        setRecentBookings(bookingsRes.value.bookings?.slice(0, 5) || []);
+      } else {
+        console.error("Bookings load failed:", bookingsRes.reason);
+      }
     } catch (err) { console.error("Overview error:", err); }
     setLoading(false);
   }
@@ -173,7 +181,7 @@ export function AdminDashboard({ isAdmin, token }: Props) {
     if (activeTab === "bookings") loadBookings();
     if (activeTab === "therapists") loadTherapists();
     if (activeTab === "promos") loadPromos();
-    if (activeTab === "analytics" && !analytics) loadOverview();
+    if (activeTab === "analytics") loadOverview();
     if (activeTab === "zoom") loadZoom();
   }, [activeTab, usersPage, userSearch]);
 
