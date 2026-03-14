@@ -10,7 +10,22 @@ import { Session } from "./features/sessions/sessionApi";
 import { AdminDashboard } from "./features/admin/AdminDashboard";
 import { ProfilePage } from "./features/profile/ProfilePage";
 import { MyBookings } from "./features/bookings/MyBookings";
-type View = "sessions" | "bookings" | "profile" | "admin";
+import { TherapistDashboard } from "./features/therapist/TherapistDashboard";
+import { MyTherapyTimeline } from "./features/therapist/MyTherapyTimeline";
+import { ClientDashboard } from "./features/client/ClientDashboard";
+type View = "dashboard" | "sessions" | "bookings" | "profile" | "admin" | "therapist" | "timeline";
+
+function getDefaultViewForRole(user: User): View {
+  switch (user.role) {
+    case "ADMIN":
+      return "admin";
+    case "THERAPIST":
+      return "therapist";
+    case "CLIENT":
+    default:
+      return "dashboard";
+  }
+}
 
 function Navbar({
   user,
@@ -25,14 +40,25 @@ function Navbar({
 }) {
   const [mobileMenu, setMobileMenu] = useState(false);
 
-  const navItems: { key: View; label: string; adminOnly?: boolean }[] = [
+  // Build nav items dynamically based on role - role-specific dashboard comes first
+  const baseNavItems: { key: View; label: string; adminOnly?: boolean; therapistOnly?: boolean; clientOnly?: boolean }[] = [
+    { key: "admin", label: "Admin Dashboard", adminOnly: true },
+    { key: "therapist", label: "Workspace", therapistOnly: true },
+    { key: "dashboard", label: "Dashboard", clientOnly: true },
     { key: "sessions", label: "Sessions" },
     { key: "bookings", label: "My Bookings" },
-    { key: "admin", label: "Admin", adminOnly: true },
+    { key: "timeline", label: "My Journey" },
   ];
+  
+  // Filter and order nav items based on user role
+  const navItems = baseNavItems.filter((item) => {
+    if (item.adminOnly && !user.isAdmin && user.role !== "ADMIN") return false;
+    if (item.therapistOnly && user.role !== "THERAPIST") return false;
+    if (item.clientOnly && user.role !== "CLIENT") return false;
+    return true;
+  });
 
-  function NavButton({ item }: { item: typeof navItems[0] }) {
-    if (item.adminOnly && !user.isAdmin) return null;
+  function NavButton({ item }: { item: typeof baseNavItems[0] }) {
     return (
       <button
         onClick={() => { onNavigate(item.key); setMobileMenu(false); }}
@@ -105,9 +131,7 @@ function Navbar({
       {mobileMenu && (
         <div className="md:hidden bg-deep border-t border-white/10 px-4 pb-3">
           <div className="flex flex-col gap-1 pt-2">
-            {navItems.map((item) => {
-              if (item.adminOnly && !user.isAdmin) return null;
-              return (
+            {navItems.map((item) => (
                 <button
                   key={item.key}
                   onClick={() => { onNavigate(item.key); setMobileMenu(false); }}
@@ -119,8 +143,7 @@ function Navbar({
                 >
                   {item.label}
                 </button>
-              );
-            })}
+            ))}
             <button
               onClick={() => { onLogout(); setMobileMenu(false); }}
               className="text-left text-sm text-red-400 px-3 py-2 rounded-lg hover:bg-deep-light transition-colors"
@@ -148,11 +171,14 @@ export function App() {
     if (storedToken) {
       setToken(storedToken);
       if (storedUser) {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
+        setActiveView(getDefaultViewForRole(parsedUser));
       }
       getMe(storedToken)
         .then((res) => {
           setUser(res.user);
+          setActiveView(getDefaultViewForRole(res.user));
           localStorage.setItem("authUser", JSON.stringify(res.user));
         })
         .catch(() => {
@@ -193,6 +219,7 @@ export function App() {
         onAuthed={(newToken, newUser) => {
           setToken(newToken);
           setUser(newUser);
+          setActiveView(getDefaultViewForRole(newUser));
           localStorage.setItem("authToken", newToken);
           localStorage.setItem("authUser", JSON.stringify(newUser));
         }}
@@ -206,6 +233,7 @@ export function App() {
         onAuthed={(newToken, newUser) => {
           setToken(newToken);
           setUser(newUser);
+          setActiveView(getDefaultViewForRole(newUser));
           localStorage.setItem("authToken", newToken);
           localStorage.setItem("authUser", JSON.stringify(newUser));
         }}
@@ -240,8 +268,12 @@ export function App() {
       />
 
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
-        {activeView === "admin" && user.isAdmin ? (
+        {activeView === "therapist" && user.role === "THERAPIST" ? (
+          <TherapistDashboard token={token} userName={user.name || ""} />
+        ) : activeView === "admin" && (user.isAdmin || user.role === "ADMIN") ? (
           <AdminDashboard isAdmin={user.isAdmin} token={token} />
+        ) : activeView === "timeline" ? (
+          <MyTherapyTimeline token={token} />
         ) : activeView === "bookings" ? (
           <MyBookings token={token} />
         ) : activeView === "profile" ? (
@@ -251,6 +283,15 @@ export function App() {
             onUpdated={(updated) => {
               setUser(updated);
               localStorage.setItem("authUser", JSON.stringify(updated));
+            }}
+          />
+        ) : activeView === "dashboard" ? (
+          <ClientDashboard
+            token={token}
+            userName={user.name || ""}
+            onNavigate={(view) => {
+              setActiveView(view as View);
+              setSelectedSession(null);
             }}
           />
         ) : (

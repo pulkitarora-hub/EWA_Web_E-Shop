@@ -11,6 +11,7 @@ export type User = {
   goal?: string | null;
   onboardingComplete: boolean;
   isAdmin: boolean;
+  role: "CLIENT" | "THERAPIST" | "ADMIN";
   policySignedAt?: string | null;
   policySignedName?: string | null;
   createdAt?: string;
@@ -537,6 +538,414 @@ export async function toggleAdminPromoCode(token: string, id: string, active: bo
 export async function deleteAdminPromoCode(token: string, id: string) {
   return request<{ ok: boolean }>(`/admin/promo-codes/${id}`, {
     method: "DELETE",
+    headers: authHeaders(token),
+  });
+}
+
+// ─── Therapist Types ──────────────────────────────────────────────────────────
+
+export type TherapyNote = {
+  id: string;
+  bookingId: string;
+  therapistId: string;
+  clientId: string;
+  sessionSummary?: string | null;
+  keyThemes: string[];
+  emotionalState?: string | null;
+  moodRating?: number | null;
+  observations?: string | null;
+  interventions?: string | null;
+  actionItems?: string | null;
+  nextSessionFocus?: string | null;
+  internalNotes?: string | null;
+  visibility: "PRIVATE" | "SHARED" | "HOMEWORK";
+  sharedAt?: string | null;
+  tags: NoteTag[];
+  attachments?: NoteAttachment[];
+  booking?: BookingWithSession;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type NoteTag = {
+  id: string;
+  tag: string;
+  category: string;
+};
+
+export type NoteAttachment = {
+  id: string;
+  fileName: string;
+  fileUrl: string;
+  fileType: string;
+  fileSizeBytes: number;
+};
+
+export type TherapistClient = {
+  id: string;
+  name?: string | null;
+  email?: string | null;
+  phone?: string | null;
+  avatarUrl?: string | null;
+  totalSessions: number;
+  lastSessionDate: string;
+};
+
+export type ClientProfile = {
+  id: string;
+  userId: string;
+  emergencyContact?: string | null;
+  emergencyPhone?: string | null;
+  therapyGoals?: string | null;
+  intakeNotes?: string | null;
+  dateOfBirth?: string | null;
+};
+
+export type TimelineEntry = {
+  bookingId: string;
+  sessionTitle: string;
+  sessionDate: string;
+  sessionHost: string;
+  note: TherapyNote | null;
+};
+
+export type AnalyticsData = {
+  totalBookings: number;
+  paidBookings: number;
+  cancelledBookings: number;
+  completionRate: number;
+  totalRevenue: number;
+  activeClients: number;
+  totalNotes: number;
+  noteCompletionRate: number;
+  therapistCount: number;
+};
+
+// ─── Therapist Dashboard API ──────────────────────────────────────────────────
+
+export async function fetchTherapistDashboard(token: string) {
+  return request<{
+    todaySessions: any[];
+    upcomingSessions: any[];
+    pendingNotesCount: number;
+    totalClients: number;
+  }>("/therapist/dashboard", { headers: authHeaders(token) });
+}
+
+export async function fetchTherapistClients(token: string, search?: string) {
+  const qs = search ? `?search=${encodeURIComponent(search)}` : "";
+  return request<{ clients: TherapistClient[] }>(`/therapist/clients${qs}`, {
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchClientTimeline(token: string, clientId: string) {
+  return request<{ client: any; timeline: any[] }>(
+    `/therapist/clients/${clientId}/timeline`,
+    { headers: authHeaders(token) }
+  );
+}
+
+export async function fetchTherapistPendingNotes(token: string) {
+  return request<{ pendingBookings: any[] }>("/therapist/notes/pending", {
+    headers: authHeaders(token),
+  });
+}
+
+// ─── Therapy Notes API ────────────────────────────────────────────────────────
+
+export async function createTherapyNote(
+  token: string,
+  data: {
+    bookingId: string;
+    sessionSummary?: string;
+    keyThemes?: string[];
+    emotionalState?: string;
+    moodRating?: number;
+    observations?: string;
+    interventions?: string;
+    actionItems?: string;
+    nextSessionFocus?: string;
+    internalNotes?: string;
+    visibility?: string;
+    tags?: { tag: string; category: string }[];
+  }
+) {
+  return request<{ note: TherapyNote }>("/notes", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchNote(token: string, noteId: string) {
+  return request<{ note: TherapyNote }>(`/notes/${noteId}`, {
+    headers: authHeaders(token),
+  });
+}
+
+export async function updateTherapyNote(
+  token: string,
+  noteId: string,
+  data: Partial<{
+    sessionSummary: string;
+    keyThemes: string[];
+    emotionalState: string;
+    moodRating: number;
+    observations: string;
+    interventions: string;
+    actionItems: string;
+    nextSessionFocus: string;
+    internalNotes: string;
+    tags: { tag: string; category: string }[];
+  }>
+) {
+  return request<{ note: TherapyNote }>(`/notes/${noteId}`, {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function updateNoteVisibility(
+  token: string,
+  noteId: string,
+  visibility: "PRIVATE" | "SHARED" | "HOMEWORK"
+) {
+  return request<{ note: TherapyNote }>(`/notes/${noteId}/visibility`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify({ visibility }),
+  });
+}
+
+export async function fetchBookingNotes(token: string, bookingId: string) {
+  return request<{ note: TherapyNote | null }>(`/bookings/${bookingId}/notes`, {
+    headers: authHeaders(token),
+  });
+}
+
+// ─── Client Profile & Timeline API ───────────────────────────────────────────
+
+export async function fetchMyProfile(token: string) {
+  return request<{ profile: ClientProfile }>("/my-profile", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function updateMyProfile(token: string, data: Partial<ClientProfile>) {
+  return request<{ profile: ClientProfile }>("/my-profile", {
+    method: "PUT",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchMyTimeline(token: string) {
+  return request<{ timeline: TimelineEntry[] }>("/my-timeline", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchMyNotes(token: string) {
+  return request<{ notes: TherapyNote[] }>("/my-notes", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchMyNote(token: string, noteId: string) {
+  return request<{ note: TherapyNote }>(`/my-notes/${noteId}`, {
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchClientProfileForTherapist(token: string, clientId: string) {
+  return request<{ client: any; profile: ClientProfile | null }>(
+    `/therapist/clients/${clientId}/profile`,
+    { headers: authHeaders(token) }
+  );
+}
+
+// ─── Admin Therapist Management ───────────────────────────────────────────────
+
+export async function createAdminTherapist(
+  token: string,
+  data: { email: string; name: string; password?: string; bio?: string; specializations?: string[]; qualifications?: string; licenseNumber?: string }
+) {
+  return request<{ user: User; profile: any }>("/admin/therapists", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchAdminTherapists(token: string) {
+  return request<{ therapists: any[] }>("/admin/therapists", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function updateAdminTherapist(
+  token: string,
+  id: string,
+  data: { bio?: string; specializations?: string[]; qualifications?: string; licenseNumber?: string; isActive?: boolean; name?: string }
+) {
+  return request<{ therapist: any }>(`/admin/therapists/${id}`, {
+    method: "PATCH",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function fetchAdminAnalytics(token: string) {
+  return request<{ analytics: AnalyticsData }>("/admin/analytics", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchAdminAuditLog(token: string, page?: number) {
+  const qs = page ? `?page=${page}` : "";
+  return request<{ logs: any[]; page: number; pageSize: number; total: number }>(
+    `/admin/audit-log${qs}`,
+    { headers: authHeaders(token) }
+  );
+}
+
+// ─── Client Dashboard ─────────────────────────────────────────────────────────
+
+export type ClientDashboardData = {
+  upcomingBookings: {
+    id: string;
+    sessionTitle: string;
+    sessionHost: string;
+    startTime: string;
+    tidycalUrl: string | null;
+    zoomJoinUrl: string | null;
+    zoomMeetingStatus: string | null;
+    actualStartTime: string | null;
+  }[];
+  credits: {
+    available: number;
+    total: number;
+    used: number;
+    packages: {
+      id: string;
+      name: string;
+      remaining: number;
+      total: number;
+    }[];
+  };
+  subscriptions: {
+    id: string;
+    sessionTitle: string;
+    frequency: string;
+    nextBillingAt: string;
+    status: string;
+  }[];
+  journey: {
+    completedSessions: number;
+    sharedNotesCount: number;
+    recentNotes: {
+      id: string;
+      sessionTitle: string;
+      sessionDate: string;
+      visibility: string;
+      keyThemes: string[];
+      moodRating: number | null;
+    }[];
+    moodTrend: {
+      date: string;
+      rating: number | null;
+    }[];
+  };
+};
+
+export async function fetchClientDashboard(token: string) {
+  return request<ClientDashboardData>("/client/dashboard", {
+    headers: authHeaders(token),
+  });
+}
+
+// ─── Zoom Integration ─────────────────────────────────────────────────────────
+
+export type ZoomMeeting = {
+  id: string;
+  zoomMeetingId: string;
+  joinUrl: string;
+  startUrl?: string;
+  password?: string;
+  status: string;
+  recordings?: ZoomRecording[];
+};
+
+export type ZoomRecording = {
+  id: string;
+  recordingId: string;
+  recordingType: string;
+  fileType: string;
+  fileSize?: number;
+  downloadUrl?: string;
+  transcriptText?: string;
+  status: string;
+};
+
+export type ZoomConfigStatus = {
+  configured: boolean;
+  config?: {
+    id: string;
+    accountId: string;
+    clientId: string;
+    hasValidToken: boolean;
+    updatedAt: string;
+  };
+};
+
+export async function fetchZoomConfig(token: string) {
+  return request<ZoomConfigStatus>("/admin/zoom/config", {
+    headers: authHeaders(token),
+  });
+}
+
+export async function saveZoomConfig(
+  token: string,
+  data: { accountId: string; clientId: string; clientSecret: string }
+) {
+  return request<{ success: boolean; config: any }>("/admin/zoom/config", {
+    method: "POST",
+    headers: authHeaders(token),
+    body: JSON.stringify(data),
+  });
+}
+
+export async function testZoomConnection(token: string) {
+  return request<{ success: boolean; error?: string }>("/admin/zoom/test", {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchBookingZoomMeeting(token: string, bookingId: string) {
+  return request<{ meeting: ZoomMeeting | null }>(`/bookings/${bookingId}/zoom-meeting`, {
+    headers: authHeaders(token),
+  });
+}
+
+export async function createBookingZoomMeeting(token: string, bookingId: string) {
+  return request<{ meeting: ZoomMeeting }>(`/bookings/${bookingId}/zoom-meeting`, {
+    method: "POST",
+    headers: authHeaders(token),
+  });
+}
+
+export async function fetchBookingRecordings(token: string, bookingId: string) {
+  return request<{ recordings: ZoomRecording[] }>(`/bookings/${bookingId}/recordings`, {
+    headers: authHeaders(token),
+  });
+}
+
+export async function syncBookingRecordings(token: string, bookingId: string) {
+  return request<{ recordings: ZoomRecording[] }>(`/bookings/${bookingId}/sync-recordings`, {
+    method: "POST",
     headers: authHeaders(token),
   });
 }

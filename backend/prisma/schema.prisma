@@ -7,6 +7,18 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
+enum Role {
+  CLIENT
+  THERAPIST
+  ADMIN
+}
+
+enum NoteVisibility {
+  PRIVATE
+  SHARED
+  HOMEWORK
+}
+
 model User {
   id                  String   @id @default(uuid())
   phone               String?  @unique
@@ -23,6 +35,7 @@ model User {
   referredByCode      String?
   onboardingComplete  Boolean  @default(false)
   isAdmin             Boolean  @default(false)
+  role                Role     @default(CLIENT)
   policySignedAt      DateTime?
   policySignedName    String?
   bookings            Booking[]
@@ -35,8 +48,41 @@ model User {
   promoUsages         PromoUsage[]
   adminActions        AdminAuditLog[] @relation("AdminActor")
   auditTargets        AdminAuditLog[] @relation("AdminTarget")
+  therapistProfile    TherapistProfile?
+  clientProfile       ClientProfile?
+  therapistNotes      TherapyNote[] @relation("TherapistNotes")
+  clientNotes         TherapyNote[] @relation("ClientNotes")
   createdAt           DateTime @default(now())
   updatedAt           DateTime @updatedAt
+}
+
+model TherapistProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id])
+  bio             String?
+  specializations String[]
+  qualifications  String?
+  licenseNumber   String?
+  profileImageUrl String?
+  isActive        Boolean  @default(true)
+  sessions        Session[]
+  zoomConfig      ZoomConfig?
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+}
+
+model ClientProfile {
+  id               String    @id @default(uuid())
+  userId           String    @unique
+  user             User      @relation(fields: [userId], references: [id])
+  emergencyContact String?
+  emergencyPhone   String?
+  therapyGoals     String?
+  intakeNotes      String?
+  dateOfBirth      DateTime?
+  createdAt        DateTime  @default(now())
+  updatedAt        DateTime  @updatedAt
 }
 
 model AdminAuditLog {
@@ -51,20 +97,22 @@ model AdminAuditLog {
 }
 
 model Session {
-  id         String   @id @default(uuid())
-  title      String
-  host       String
-  startTime  DateTime
-  price      Int
-  currency   String
-  tidycalUrl String?
-  bookings   Booking[]
-  reviews    Review[]
-  createdAt  DateTime @default(now())
+  id           String            @id @default(uuid())
+  title        String
+  host         String
+  startTime    DateTime
+  price        Int
+  currency     String
+  tidycalUrl   String?
+  therapistId  String?
+  therapist    TherapistProfile? @relation(fields: [therapistId], references: [id])
+  bookings     Booking[]
+  reviews      Review[]
+  createdAt    DateTime          @default(now())
 }
 
 model Booking {
-  id               String    @id @default(uuid())
+  id               String       @id @default(uuid())
   userId           String
   sessionId        String
   status           String
@@ -74,21 +122,28 @@ model Booking {
   paidAt           DateTime?
   cancelledAt      DateTime?
   cancelReason     String?
-  reminder24hSent  Boolean   @default(false)
-  reminder1hSent   Boolean   @default(false)
+  reminder24hSent  Boolean      @default(false)
+  reminder1hSent   Boolean      @default(false)
   promoCodeId      String?
-  promoDiscount    Int       @default(0)
-  referralDiscount Int       @default(0)
-  usedCredit       Boolean   @default(false)
+  promoDiscount    Int          @default(0)
+  referralDiscount Int          @default(0)
+  usedCredit       Boolean      @default(false)
   policySignedName String?
   policySignature  String?
   policyAgreedAt   DateTime?
-  user             User      @relation(fields: [userId], references: [id])
-  session          Session   @relation(fields: [sessionId], references: [id])
+  user             User         @relation(fields: [userId], references: [id])
+  session          Session      @relation(fields: [sessionId], references: [id])
   payment          Payment?
   review           Review?
   creditUsage      CreditUsage?
-  createdAt        DateTime  @default(now())
+  therapyNote      TherapyNote?
+  zoomMeeting      ZoomMeeting?
+  tidycalBookingId Int?         @unique
+  meetingUrl       String?
+  actualStartTime  DateTime?
+  actualEndTime    DateTime?
+  tidycalSyncedAt  DateTime?
+  createdAt        DateTime     @default(now())
 }
 
 model Payment {
@@ -116,6 +171,53 @@ model Review {
   createdAt DateTime @default(now())
 }
 
+model TherapyNote {
+  id               String         @id @default(uuid())
+  bookingId        String         @unique
+  booking          Booking        @relation(fields: [bookingId], references: [id])
+  therapistId      String
+  therapist        User           @relation("TherapistNotes", fields: [therapistId], references: [id])
+  clientId         String
+  client           User           @relation("ClientNotes", fields: [clientId], references: [id])
+  sessionSummary   String?
+  keyThemes        String[]
+  emotionalState   String?
+  moodRating       Int?
+  observations     String?
+  interventions    String?
+  actionItems      String?
+  nextSessionFocus String?
+  internalNotes    String?
+  visibility       NoteVisibility @default(PRIVATE)
+  sharedAt         DateTime?
+  attachments      NoteAttachment[]
+  tags             NoteTag[]
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+}
+
+model NoteAttachment {
+  id            String      @id @default(uuid())
+  noteId        String
+  note          TherapyNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  fileName      String
+  fileUrl       String
+  fileType      String
+  fileSizeBytes Int
+  createdAt     DateTime    @default(now())
+}
+
+model NoteTag {
+  id       String      @id @default(uuid())
+  noteId   String
+  note     TherapyNote @relation(fields: [noteId], references: [id], onDelete: Cascade)
+  tag      String
+  category String
+
+  @@index([tag])
+  @@index([category])
+}
+
 model Package {
   id           String        @id @default(uuid())
   name         String
@@ -135,7 +237,7 @@ model UserPackage {
   creditsTotal    Int
   creditsUsed     Int           @default(0)
   razorpayOrderId String?
-  status          String        // pending, active, exhausted
+  status          String
   paidAt          DateTime?
   user            User          @relation(fields: [userId], references: [id])
   package         Package       @relation(fields: [packageId], references: [id])
@@ -156,10 +258,10 @@ model Subscription {
   id            String   @id @default(uuid())
   userId        String
   sessionTitle  String
-  frequency     String   // weekly, biweekly
+  frequency     String
   price         Int
   currency      String   @default("INR")
-  status        String   // active, paused, cancelled
+  status        String
   nextBillingAt DateTime
   user          User     @relation(fields: [userId], references: [id])
   createdAt     DateTime @default(now())
@@ -170,7 +272,7 @@ model Referral {
   id           String   @id @default(uuid())
   referrerId   String
   refereeId    String
-  status       String   // pending, completed
+  status       String
   discountPct  Int      @default(10)
   referrerUsed Boolean  @default(false)
   refereeUsed  Boolean  @default(false)
@@ -182,7 +284,7 @@ model Referral {
 model PromoCode {
   id          String       @id @default(uuid())
   code        String       @unique
-  type        String       // percentage, flat
+  type        String
   value       Int
   maxUses     Int?
   usedCount   Int          @default(0)
@@ -202,4 +304,48 @@ model PromoUsage {
   promoCode   PromoCode @relation(fields: [promoCodeId], references: [id])
   user        User      @relation(fields: [userId], references: [id])
   createdAt   DateTime  @default(now())
+}
+
+// ─── Zoom Integration ─────────────────────────────────────────────────────────
+
+model ZoomConfig {
+  id            String            @id @default(uuid())
+  accountId     String            @unique
+  clientId      String
+  clientSecret  String
+  accessToken   String?
+  tokenExpiry   DateTime?
+  therapistId   String?           @unique
+  therapist     TherapistProfile? @relation(fields: [therapistId], references: [id])
+  isDefault     Boolean           @default(false)
+  createdAt     DateTime          @default(now())
+  updatedAt     DateTime          @updatedAt
+}
+
+model ZoomMeeting {
+  id            String          @id @default(uuid())
+  zoomMeetingId String          @unique
+  bookingId     String          @unique
+  booking       Booking         @relation(fields: [bookingId], references: [id])
+  joinUrl       String
+  startUrl      String
+  password      String?
+  status        String          @default("scheduled")
+  recordings    ZoomRecording[]
+  createdAt     DateTime        @default(now())
+}
+
+model ZoomRecording {
+  id             String      @id @default(uuid())
+  zoomMeetingId  String
+  meeting        ZoomMeeting @relation(fields: [zoomMeetingId], references: [id])
+  recordingId    String      @unique
+  recordingType  String
+  fileType       String
+  fileSize       Int?
+  downloadUrl    String?
+  localPath      String?
+  transcriptText String?
+  status         String      @default("processing")
+  createdAt      DateTime    @default(now())
 }

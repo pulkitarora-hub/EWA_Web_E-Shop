@@ -12,6 +12,13 @@ import helmet from "helmet";
 import rateLimit from "express-rate-limit";
 import validator from "validator";
 import bcrypt from "bcryptjs";
+import therapistRoutes from "./routes/therapist.js";
+import notesRoutes from "./routes/notes.js";
+import clientProfileRoutes from "./routes/clientProfile.js";
+import adminTherapistRoutes from "./routes/adminTherapist.js";
+import zoomRoutes from "./routes/zoom.js";
+import { createZoomMeetingForBooking, getZoomConfigStatus } from "./services/zoom.js";
+import { syncTidyCalBookings, getTidyCalStatus } from "./services/tidycal.js";
 
 dotenv.config();
 
@@ -906,6 +913,22 @@ app.post("/payments/verify", authMiddleware(), async (req, res) => {
       status: "captured",
     },
   });
+
+  // NOTE: Zoom meeting creation disabled - TidyCal handles meeting creation
+  // The meeting URL will be synced from TidyCal via the syncTidyCalBookings cron job
+  // To re-enable our own Zoom integration, uncomment the code below:
+  /*
+  let zoomMeeting = null;
+  try {
+    const zoomStatus = await getZoomConfigStatus();
+    if (zoomStatus.configured) {
+      zoomMeeting = await createZoomMeetingForBooking(bookingId);
+      console.log("Zoom meeting created:", zoomMeeting.zoomMeetingId);
+    }
+  } catch (err) {
+    console.error("Failed to create Zoom meeting:", err);
+  }
+  */
 
   // Send confirmation email with calendar event
   const session = await prisma.session.findUnique({
@@ -1872,6 +1895,13 @@ cron.schedule("0 0 * * *", () => {
   processSubscriptions().catch((err) => console.error("Subscription cron error:", err));
 });
 
+
+// ─── Mount new route modules ──────────────────────────────────────────────────
+app.use(therapistRoutes);
+app.use(notesRoutes);
+app.use(clientProfileRoutes);
+app.use(adminTherapistRoutes);
+app.use(zoomRoutes);
 
 const port = Number(process.env.PORT || 4000);
 app.listen(port, () => {
