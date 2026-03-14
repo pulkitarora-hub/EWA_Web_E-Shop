@@ -1,3 +1,5 @@
+"use client";
+
 export default function OfflinePage() {
   return (
     <div className="min-h-screen bg-warm-50 flex items-center justify-center p-4">
@@ -26,10 +28,10 @@ export default function OfflinePage() {
         </div>
 
         <h1 className="text-2xl font-semibold text-deep mb-3">
-          You're Offline
+          You&apos;re Offline
         </h1>
         <p className="text-warm-600 mb-8">
-          It looks like you've lost your internet connection. Don't worry, you can still access some features.
+          It looks like you&apos;ve lost your internet connection. Don&apos;t worry, you can still access some features.
         </p>
 
         <div className="space-y-3">
@@ -48,7 +50,7 @@ export default function OfflinePage() {
         </div>
 
         <p className="mt-8 text-sm text-warm-500">
-          Some features require an internet connection. Your data will sync automatically when you're back online.
+          Some features require an internet connection. Your data will sync automatically when you&apos;re back online.
         </p>
       </div>
     </div>
