@@ -232,13 +232,13 @@ function OverviewContent({ analytics, recentBookings, loading, onViewAllBookings
   if (loading) return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-3 border-warm-200 border-t-slate-800 rounded-full animate-spin" /></div>;
   return (
     <div className="space-y-6">
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard icon={<BookingIcon />} value={analytics?.totalBookings || 0} label="Total Bookings" />
         <StatCard icon={<CheckIcon />} value={analytics?.paidBookings || 0} label="Paid Sessions" />
         <StatCard icon={<UsersIcon />} value={analytics?.activeClients || 0} label="Active Clients" />
         <StatCard icon={<TherapistIcon />} value={analytics?.therapistCount || 0} label="Therapists" />
       </div>
-      <div className="grid lg:grid-cols-2 gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 sm:gap-6">
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
           <div className="px-5 py-4 border-b border-warm-100 flex items-center justify-between">
             <h2 className="font-semibold text-warm-900">Recent Bookings</h2>
@@ -411,7 +411,7 @@ function AnalyticsContent({ analytics, loading }: any) {
   if (loading) return <div className="flex items-center justify-center py-16"><div className="w-8 h-8 border-3 border-warm-200 border-t-slate-800 rounded-full animate-spin" /></div>;
   if (!analytics) return <div className="text-center py-16 text-warm-500">Unable to load analytics</div>;
   return (
-    <div className="grid grid-cols-2 lg:grid-cols-3 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 sm:gap-4">
       <StatCard icon={<BookingIcon />} value={analytics.totalBookings} label="Total Bookings" />
       <StatCard icon={<CheckIcon />} value={analytics.paidBookings} label="Paid Sessions" />
       <StatCard icon={<CloseIcon />} value={analytics.cancelledBookings} label="Cancelled" />

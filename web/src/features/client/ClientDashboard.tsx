@@ -82,8 +82,8 @@ export function ClientDashboard({ token, userName, onNavigate }: Props) {
   return (
     <div className="space-y-6">
       {/* Welcome Header */}
-      <div className="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-6 text-white">
-        <h1 className="text-2xl font-semibold mb-1">
+      <div className="bg-gradient-to-r from-brand-600 to-brand-700 rounded-xl sm:rounded-2xl p-4 sm:p-6 text-white">
+        <h1 className="text-xl sm:text-2xl font-semibold mb-1">
           {getGreeting()}, {userName || "there"}!
         </h1>
         <p className="text-brand-100 text-sm">
@@ -93,7 +93,7 @@ export function ClientDashboard({ token, userName, onNavigate }: Props) {
         </p>
       </div>
 
-      <div className="grid md:grid-cols-2 lg:grid-cols-3 gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 sm:gap-6">
         {/* Upcoming Sessions */}
         <div className="bg-white rounded-xl shadow-sm p-5 md:col-span-2 lg:col-span-2">
           <div className="flex items-center justify-between mb-4">
@@ -124,9 +124,9 @@ export function ClientDashboard({ token, userName, onNavigate }: Props) {
               {data.upcomingBookings.map((booking) => (
                 <div
                   key={booking.id}
-                  className="flex items-center justify-between p-4 bg-warm-50 rounded-lg hover:bg-warm-100 transition-colors"
+                  className="flex flex-col sm:flex-row sm:items-center justify-between p-3 sm:p-4 bg-warm-50 rounded-lg hover:bg-warm-100 transition-colors gap-3"
                 >
-                  <div className="flex items-center gap-4">
+                  <div className="flex items-center gap-3 sm:gap-4">
                     <div className="w-12 h-12 bg-brand-100 rounded-lg flex items-center justify-center">
                       <svg className="w-6 h-6 text-brand-600" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={1.5} d="M15 10l4.553-2.276A1 1 0 0121 8.618v6.764a1 1 0 01-1.447.894L15 14M5 18h8a2 2 0 002-2V8a2 2 0 00-2-2H5a2 2 0 00-2 2v8a2 2 0 002 2z" />
@@ -142,7 +142,7 @@ export function ClientDashboard({ token, userName, onNavigate }: Props) {
                       </p>
                     </div>
                   </div>
-                  <div className="flex items-center gap-2">
+                  <div className="flex items-center gap-2 justify-end sm:justify-start">
                     {booking.zoomJoinUrl ? (
                       <a
                         href={booking.zoomJoinUrl}

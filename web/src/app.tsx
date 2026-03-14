@@ -13,6 +13,7 @@ import { MyBookings } from "./features/bookings/MyBookings";
 import { TherapistDashboard } from "./features/therapist/TherapistDashboard";
 import { MyTherapyTimeline } from "./features/therapist/MyTherapyTimeline";
 import { ClientDashboard } from "./features/client/ClientDashboard";
+import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
 type View = "dashboard" | "sessions" | "bookings" | "profile" | "admin" | "therapist" | "timeline";
 
 function getDefaultViewForRole(user: User): View {

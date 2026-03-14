@@ -113,9 +113,9 @@ export function TherapistDashboard({ token, userName }: Props) {
     <div className="space-y-6">
       {/* Header */}
       <div className="bg-gradient-to-r from-brand-600 to-brand-700 rounded-2xl p-6 text-white">
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
           <div>
-            <h1 className="text-2xl font-semibold">{getGreeting()}, {userName}</h1>
+            <h1 className="text-xl sm:text-2xl font-semibold">{getGreeting()}, {userName}</h1>
             <p className="text-brand-100 text-sm mt-1">Therapist Dashboard</p>
           </div>
           {dashboard?.pendingNotesCount > 0 && (
@@ -204,7 +204,7 @@ function OverviewTab({
   return (
     <div className="space-y-6">
       {/* Stats Grid */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <StatCard
           icon={<CalendarIcon />}
           value={dashboard.todaySessions?.length || 0}
@@ -231,7 +231,7 @@ function OverviewTab({
 
       {/* Pending Notes Alert */}
       {dashboard.pendingNotesCount > 0 && (
-        <div className="bg-amber-50 border border-amber-200 rounded-xl p-4 flex items-center justify-between">
+        <div className="bg-amber-50 border border-amber-200 rounded-xl p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 bg-amber-100 rounded-full flex items-center justify-center">
               <NoteIcon className="w-5 h-5 text-amber-600" />
@@ -267,7 +267,7 @@ function OverviewTab({
         ) : (
           <div className="divide-y divide-warm-100">
             {dashboard.todaySessions.map((b: any) => (
-              <div key={b.id} className="p-4 flex items-center justify-between hover:bg-warm-50 transition-colors">
+              <div key={b.id} className="p-3 sm:p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 sm:gap-4 hover:bg-warm-50 transition-colors">
                 <div className="flex items-center gap-4">
                   <div className="w-10 h-10 bg-brand-100 rounded-full flex items-center justify-center text-brand-600 font-semibold">
                     {(b.user?.name || "?")[0].toUpperCase()}
@@ -283,7 +283,7 @@ function OverviewTab({
                     </p>
                   </div>
                 </div>
-                <div className="flex items-center gap-2">
+                <div className="flex flex-wrap items-center gap-2 justify-end sm:justify-start">
                   {b.zoomMeeting?.startUrl && (
                     <a
                       href={b.zoomMeeting.startUrl}
