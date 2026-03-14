@@ -20,6 +20,12 @@ export function PWAInstallPrompt() {
       (window.navigator as any).standalone === true;
     setIsStandalone(standalone);
 
+    // Check if user has permanently installed the app
+    const installed = localStorage.getItem("pwa-installed") === "true";
+    if (installed || standalone) {
+      return;
+    }
+
     // Improved iOS detection (works with newer iOS versions)
     const userAgent = window.navigator.userAgent.toLowerCase();
     const ios = /iphone|ipad|ipod/.test(userAgent) || 
@@ -31,49 +37,35 @@ export function PWAInstallPrompt() {
       e.preventDefault();
       setDeferredPrompt(e as BeforeInstallPromptEvent);
       
-      // Show prompt after a delay
-      setTimeout(() => {
-        const dismissed = localStorage.getItem("pwa-prompt-dismissed");
-        const dismissedTime = localStorage.getItem("pwa-prompt-dismissed-time");
-        
-        // Show again if dismissed more than 7 days ago
-        if (dismissedTime) {
-          const daysSinceDismissed = (Date.now() - parseInt(dismissedTime)) / (1000 * 60 * 60 * 24);
-          if (daysSinceDismissed > 7) {
-            setShowPrompt(true);
-            return;
-          }
-        }
-        
-        if (!dismissed) {
-          setShowPrompt(true);
-        }
-      }, 3000);
+      // Check if dismissed in current session only
+      const dismissedThisSession = sessionStorage.getItem("pwa-prompt-dismissed-session");
+      if (!dismissedThisSession) {
+        // Show prompt after a short delay
+        setTimeout(() => setShowPrompt(true), 2000);
+      }
     };
 
     window.addEventListener("beforeinstallprompt", handler);
 
     // Show iOS prompt after delay if not installed
     if (ios && !standalone) {
-      setTimeout(() => {
-        const dismissed = localStorage.getItem("pwa-prompt-dismissed");
-        const dismissedTime = localStorage.getItem("pwa-prompt-dismissed-time");
-        
-        if (dismissedTime) {
-          const daysSinceDismissed = (Date.now() - parseInt(dismissedTime)) / (1000 * 60 * 60 * 24);
-          if (daysSinceDismissed > 7) {
-            setShowPrompt(true);
-            return;
-          }
-        }
-        
-        if (!dismissed) {
-          setShowPrompt(true);
-        }
-      }, 3000);
+      const dismissedThisSession = sessionStorage.getItem("pwa-prompt-dismissed-session");
+      if (!dismissedThisSession) {
+        setTimeout(() => setShowPrompt(true), 2000);
+      }
     }
 
-    return () => window.removeEventListener("beforeinstallprompt", handler);
+    // Listen for successful app installation
+    const appInstalledHandler = () => {
+      localStorage.setItem("pwa-installed", "true");
+      setShowPrompt(false);
+    };
+    window.addEventListener("appinstalled", appInstalledHandler);
+
+    return () => {
+      window.removeEventListener("beforeinstallprompt", handler);
+      window.removeEventListener("appinstalled", appInstalledHandler);
+    };
   }, []);
 
   async function handleInstall() {
@@ -83,6 +75,7 @@ export function PWAInstallPrompt() {
     const { outcome } = await deferredPrompt.userChoice;
 
     if (outcome === "accepted") {
+      localStorage.setItem("pwa-installed", "true");
       setShowPrompt(false);
     }
     setDeferredPrompt(null);
@@ -90,8 +83,14 @@ export function PWAInstallPrompt() {
 
   function handleDismiss() {
     setShowPrompt(false);
-    localStorage.setItem("pwa-prompt-dismissed", "true");
-    localStorage.setItem("pwa-prompt-dismissed-time", Date.now().toString());
+    // Only hide for current session - will show again on next visit
+    sessionStorage.setItem("pwa-prompt-dismissed-session", "true");
+  }
+
+  // For iOS, provide a "I've installed it" option
+  function handleIOSInstalled() {
+    localStorage.setItem("pwa-installed", "true");
+    setShowPrompt(false);
   }
 
   if (isStandalone || !showPrompt) return null;
@@ -132,7 +131,7 @@ export function PWAInstallPrompt() {
                   Install our app for quick access, push notifications, and offline support.
                 </p>
               )}
-              <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-2">
                 {!isIOS && deferredPrompt && (
                   <button
                     onClick={handleInstall}
@@ -144,11 +143,19 @@ export function PWAInstallPrompt() {
                     Install App
                   </button>
                 )}
+                {isIOS && (
+                  <button
+                    onClick={handleIOSInstalled}
+                    className="px-4 py-2 bg-brand-600 text-white text-sm font-medium rounded-lg hover:bg-brand-700 transition-colors"
+                  >
+                    I've installed it
+                  </button>
+                )}
                 <button
                   onClick={handleDismiss}
                   className="px-4 py-2 text-warm-600 text-sm font-medium hover:text-warm-800 hover:bg-warm-100 rounded-lg transition-colors"
                 >
-                  {isIOS ? "Got it" : "Not now"}
+                  Remind me later
                 </button>
               </div>
             </div>
