@@ -31,17 +31,20 @@ interface TidyCalBookingsResponse {
 }
 
 export class TidyCalService {
-  private token: string;
+  private token: string | null;
 
   constructor() {
-    const token = process.env.TIDYCAL_API_TOKEN;
-    if (!token) {
-      throw new Error("TIDYCAL_API_TOKEN not configured");
-    }
-    this.token = token;
+    this.token = process.env.TIDYCAL_API_TOKEN || null;
+  }
+
+  isConfigured(): boolean {
+    return !!this.token;
   }
 
   private async fetch<T>(endpoint: string, params?: Record<string, string>): Promise<T> {
+    if (!this.token) {
+      throw new Error("TIDYCAL_API_TOKEN not configured");
+    }
     const url = new URL(`${TIDYCAL_API_BASE}${endpoint}`);
     if (params) {
       Object.entries(params).forEach(([k, v]) => url.searchParams.append(k, v));
@@ -79,6 +82,11 @@ export async function syncTidyCalBookings(): Promise<{ synced: number; errors: s
 
   try {
     const service = new TidyCalService();
+    
+    if (!service.isConfigured()) {
+      console.log("TidyCal sync skipped: TIDYCAL_API_TOKEN not configured");
+      return { synced: 0, errors: [] };
+    }
 
     // Fetch all bookings from TidyCal
     const tidyCalBookings = await service.getBookings();

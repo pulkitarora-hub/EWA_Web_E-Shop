@@ -9,7 +9,13 @@ export async function getUserFromToken(token?: string) {
   if (!token) return null;
   try {
     const payload = jwt.verify(token, JWT_SECRET) as { sub: string };
-    return prisma.user.findUnique({ where: { id: payload.sub } });
+    return prisma.user.findUnique({ 
+      where: { id: payload.sub },
+      include: {
+        therapistProfile: true,
+        clientProfile: true,
+      }
+    });
   } catch {
     return null;
   }
