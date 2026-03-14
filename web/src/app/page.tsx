@@ -1,7 +1,9 @@
-"use client";
+import { headers } from "next/headers";
+import AppClient from "./AppClient";
 
-import { App } from "../app";
+export const dynamic = "force-dynamic";
 
 export default function Page() {
-  return <App />;
+  headers();
+  return <AppClient />;
 }
