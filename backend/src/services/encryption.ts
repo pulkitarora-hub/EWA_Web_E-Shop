@@ -2,11 +2,13 @@ import crypto from "crypto";
 
 const ALGORITHM = "aes-256-gcm";
 const IV_LENGTH = 16;
-const TAG_LENGTH = 16;
 
 function getKey(): Buffer {
   const key = process.env.NOTES_ENCRYPTION_KEY;
   if (!key) {
+    if (process.env.NODE_ENV === "production") {
+      throw new Error("NOTES_ENCRYPTION_KEY must be set in production");
+    }
     return crypto.createHash("sha256").update("dev-encryption-key").digest();
   }
   return crypto.createHash("sha256").update(key).digest();

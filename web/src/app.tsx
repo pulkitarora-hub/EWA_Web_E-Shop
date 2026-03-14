@@ -172,9 +172,13 @@ export function App() {
     if (storedToken) {
       setToken(storedToken);
       if (storedUser) {
-        const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
-        setActiveView(getDefaultViewForRole(parsedUser));
+        try {
+          const parsedUser = JSON.parse(storedUser);
+          setUser(parsedUser);
+          setActiveView(getDefaultViewForRole(parsedUser));
+        } catch {
+          localStorage.removeItem("authUser");
+        }
       }
       getMe(storedToken)
         .then((res) => {

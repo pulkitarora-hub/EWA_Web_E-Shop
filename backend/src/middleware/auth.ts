@@ -5,16 +5,20 @@ import { PrismaClient, Role } from "@prisma/client";
 const prisma = new PrismaClient();
 const JWT_SECRET = process.env.JWT_SECRET || "dev-secret";
 
+if (process.env.NODE_ENV === "production" && JWT_SECRET === "dev-secret") {
+  throw new Error("JWT_SECRET must be set to a secure value in production");
+}
+
 export async function getUserFromToken(token?: string) {
   if (!token) return null;
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { sub: string };
-    return prisma.user.findUnique({ 
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { sub: string };
+    return prisma.user.findUnique({
       where: { id: payload.sub },
       include: {
         therapistProfile: true,
         clientProfile: true,
-      }
+      },
     });
   } catch {
     return null;

@@ -343,6 +343,7 @@ export function SessionDetail({ session, token, userName, userEmail, hasSignedPo
                 height="600"
                 style={{ border: "none" }}
                 title="Book a time slot"
+                sandbox="allow-scripts allow-same-origin allow-forms allow-popups"
               />
             </div>
           </div>

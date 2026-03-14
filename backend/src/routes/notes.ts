@@ -64,6 +64,9 @@ router.post(
     if (!booking) {
       return res.status(404).json({ error: "booking_not_found" });
     }
+    if (booking.session.therapistId !== user.therapistProfile?.id) {
+      return res.status(403).json({ error: "forbidden" });
+    }
     if (booking.therapyNote) {
       return res.status(409).json({ error: "note_already_exists" });
     }

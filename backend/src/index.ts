@@ -87,7 +87,7 @@ app.use((req, res, next) => {
   next();
 });
 
-app.use(express.json({ limit: "5mb" }));
+app.use(express.json({ limit: "1mb" }));
 
 const prisma = new PrismaClient();
 const otpStore = new Map<
@@ -115,6 +115,15 @@ const authLimiter = rateLimit({
   message: { error: "rate_limited" },
 });
 
+const globalLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { error: "rate_limited" },
+});
+app.use(globalLimiter);
+
 const googleClient = GOOGLE_CLIENT_ID
   ? new OAuth2Client(GOOGLE_CLIENT_ID)
   : null;
@@ -125,7 +134,7 @@ const razorpay =
     : null;
 
 function signToken(userId: string) {
-  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "24h" });
+  return jwt.sign({ sub: userId }, JWT_SECRET, { expiresIn: "24h", algorithm: "HS256" });
 }
 
 function isValidPhone(phone?: string | null) {
@@ -146,7 +155,17 @@ function sanitizeText(value?: string | null, maxLength = 1000) {
 
 function isStrongPassword(password?: string | null) {
   if (!password) return false;
-  return password.length >= 8;
+  if (password.length < 8) return false;
+  if (!/[A-Z]/.test(password)) return false;
+  if (!/[a-z]/.test(password)) return false;
+  if (!/[0-9]/.test(password)) return false;
+  return true;
+}
+
+function safeUser(user: any) {
+  if (!user) return user;
+  const { passwordHash, resetTokenHash, resetTokenExpiresAt, resetTokenSentAt, ...safe } = user;
+  return safe;
 }
 
 function hashToken(token: string) {
@@ -156,7 +175,7 @@ function hashToken(token: string) {
 async function getUserFromToken(token?: string) {
   if (!token) return null;
   try {
-    const payload = jwt.verify(token, JWT_SECRET) as { sub: string };
+    const payload = jwt.verify(token, JWT_SECRET, { algorithms: ["HS256"] }) as { sub: string };
     return prisma.user.findUnique({ where: { id: payload.sub } });
   } catch {
     return null;
@@ -228,7 +247,7 @@ app.post("/auth/google", authLimiter, async (req, res) => {
     });
 
     const token = signToken(user.id);
-    return res.json({ token, user });
+    return res.json({ token, user: safeUser(user) });
   } catch (err) {
     console.error("Google auth error:", err);
     return res.status(400).json({ error: "google_auth_failed" });
@@ -281,7 +300,7 @@ app.post("/auth/signup", authLimiter, async (req, res) => {
     },
   });
   const token = signToken(user.id);
-  return res.json({ token, user });
+  return res.json({ token, user: safeUser(user) });
 });
 
 app.post("/auth/login", authLimiter, async (req, res) => {
@@ -318,7 +337,7 @@ app.post("/auth/login", authLimiter, async (req, res) => {
   }
 
   const token = signToken(user.id);
-  return res.json({ token, user });
+  return res.json({ token, user: safeUser(user) });
 });
 
 app.post("/auth/forgot-password", authLimiter, async (req, res) => {
@@ -442,7 +461,8 @@ app.post("/auth/request-otp", authLimiter, async (req, res) => {
     otp,
     expiresAt: Date.now() + 5 * 60 * 1000,
   });
-  return res.json({ otpToken, otp });
+  if (!IS_PRODUCTION) console.log(`[DEV] OTP for ${phone}: ${otp}`);
+  return res.json({ otpToken });
 });
 
 app.post("/auth/verify-otp", authLimiter, async (req, res) => {
@@ -498,7 +518,7 @@ app.post("/auth/verify-otp", authLimiter, async (req, res) => {
     update: {},
   });
   const token = signToken(user.id);
-  return res.json({ token, user });
+  return res.json({ token, user: safeUser(user) });
 });
 
 // ─── User ─────────────────────────────────────────────────────────────────────
@@ -900,7 +920,9 @@ app.post("/payments/verify", authMiddleware(), async (req, res) => {
     .createHmac("sha256", RAZORPAY_KEY_SECRET)
     .update(body)
     .digest("hex");
-  if (expected !== razorpaySignature) {
+  const expectedBuf = Buffer.from(expected, "hex");
+  const signatureBuf = Buffer.from(String(razorpaySignature), "hex");
+  if (expectedBuf.length !== signatureBuf.length || !crypto.timingSafeEqual(expectedBuf, signatureBuf)) {
     return res.status(400).json({ error: "invalid_signature" });
   }
   const updated = await prisma.booking.update({
@@ -1915,14 +1937,7 @@ app.listen(port, () => {
 });
 
 // ─── Admin Seed Endpoint (protected) ─────────────────────────────────────────
-app.post("/admin/seed-sessions", async (req, res) => {
-  const { secret } = req.body || {};
-  const SEED_SECRET = process.env.SEED_SECRET || "temp-seed-secret-2024";
-  
-  if (secret !== SEED_SECRET) {
-    return res.status(401).json({ error: "unauthorized" });
-  }
-
+app.post("/admin/seed-sessions", authMiddleware(), adminMiddleware(), async (req, res) => {
   try {
     // TidyCal URL mappings
     const TIDYCAL_URLS = {
@@ -1971,6 +1986,6 @@ app.post("/admin/seed-sessions", async (req, res) => {
     res.json({ success: true, results });
   } catch (error: any) {
     console.error("Seed error:", error);
-    res.status(500).json({ error: error.message });
+    res.status(500).json({ error: "seed_failed" });
   }
 });

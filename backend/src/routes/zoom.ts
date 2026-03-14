@@ -18,7 +18,7 @@ const prisma = new PrismaClient();
 
 function verifyZoomWebhook(req: any): boolean {
   const secretToken = process.env.ZOOM_WEBHOOK_SECRET_TOKEN;
-  if (!secretToken) return true;
+  if (!secretToken) return false;
 
   const signature = req.headers["x-zm-signature"];
   const timestamp = req.headers["x-zm-request-timestamp"];
@@ -32,7 +32,10 @@ function verifyZoomWebhook(req: any): boolean {
     .digest("hex");
   const expectedSignature = `v0=${hashForVerify}`;
 
-  return signature === expectedSignature;
+  const sigBuf = Buffer.from(signature);
+  const expectedBuf = Buffer.from(expectedSignature);
+  if (sigBuf.length !== expectedBuf.length) return false;
+  try { return crypto.timingSafeEqual(sigBuf, expectedBuf); } catch { return false; }
 }
 
 // ─── Zoom Webhook Endpoint ────────────────────────────────────────────────────
@@ -151,7 +154,7 @@ router.post("/admin/zoom/config", authMiddleware(), adminMiddleware(), async (re
     });
   } catch (error: any) {
     console.error("Save Zoom config error:", error);
-    return res.status(500).json({ error: error.message || "failed_to_save_config" });
+    return res.status(500).json({ error: "failed_to_save_config" });
   }
 });
 
@@ -326,7 +329,7 @@ router.get("/admin/tidycal/status", authMiddleware(), adminMiddleware(), async (
     return res.json(status);
   } catch (error: any) {
     console.error("TidyCal status error:", error);
-    return res.status(500).json({ error: error.message || "failed_to_get_status" });
+    return res.status(500).json({ error: "failed_to_get_status" });
   }
 });
 
@@ -336,7 +339,7 @@ router.post("/admin/tidycal/sync", authMiddleware(), adminMiddleware(), async (r
     return res.json(result);
   } catch (error: any) {
     console.error("TidyCal sync error:", error);
-    return res.status(500).json({ error: error.message || "sync_failed" });
+    return res.status(500).json({ error: "sync_failed" });
   }
 });
 
