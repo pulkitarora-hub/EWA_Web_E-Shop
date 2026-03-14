@@ -1,5 +1,7 @@
 "use client";
 
+import { MyPackages } from "./MyPackages";
+
 import React, { useEffect, useState } from "react";
 import {
   fetchMyBookings,
@@ -167,6 +169,9 @@ export function MyBookings({ token }: Props) {
 
   return (
     <div>
+      {/* Package tracking section */}
+      <MyPackages token={token} />
+
       <div className="mb-6">
         <h2 className="font-heading text-2xl font-semibold text-charcoal">
           My Bookings

@@ -9,6 +9,7 @@ type Props = {
   session: Session;
   token: string;
   userName: string;
+  userEmail: string;
   hasSignedPolicy?: boolean;
 };
 
@@ -27,7 +28,7 @@ function Spinner() {
   );
 }
 
-export function SessionDetail({ session, token, userName, hasSignedPolicy }: Props) {
+export function SessionDetail({ session, token, userName, userEmail, hasSignedPolicy }: Props) {
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<"idle" | "success" | "error" | "cancelled">("idle");
   const [statusMessage, setStatusMessage] = useState<string | null>(null);
@@ -43,6 +44,11 @@ export function SessionDetail({ session, token, userName, hasSignedPolicy }: Pro
   // Credits state
   const [totalCredits, setTotalCredits] = useState(0);
   const [useCredit, setUseCredit] = useState(false);
+
+  // Build TidyCal URL with pre-filled name and email
+  const tidycalUrlWithParams = session.tidycalUrl
+    ? `${session.tidycalUrl}${session.tidycalUrl.includes("?") ? "&" : "?"}name=${encodeURIComponent(userName)}&email=${encodeURIComponent(userEmail)}`
+    : "";
 
   useEffect(() => {
     fetchMyPackages(token)
@@ -332,7 +338,7 @@ export function SessionDetail({ session, token, userName, hasSignedPolicy }: Pro
             </h4>
             <div className="rounded-xl border border-warm-200 overflow-hidden">
               <iframe
-                src={session.tidycalUrl}
+                src={tidycalUrlWithParams}
                 width="100%"
                 height="600"
                 style={{ border: "none" }}

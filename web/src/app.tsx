@@ -270,6 +270,7 @@ export function App() {
                   session={selectedSession}
                   token={token}
                   userName={user.name || ""}
+                  userEmail={user.email || ""}
                   hasSignedPolicy={!!user.policySignedAt}
                 />
               </div>
@@ -288,7 +289,7 @@ export function App() {
             className="h-8 mx-auto mb-2 opacity-60"
           />
           <p className="text-xs text-white/40">
-            Empower. Thrive. Transcend. &middot; care@avadhisharma.com &middot; evolvewithavadhi.com
+            Empower. Thrive. Transcend. &middot; care@evolvewithavadhi.com &middot; evolvewithavadhi.com
           </p>
         </div>
       </footer>
