@@ -60,6 +60,9 @@ export default function RootLayout({
         <meta name="msapplication-TileColor" content="#371637" />
         <meta name="msapplication-tap-highlight" content="no" />
         <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+        <link rel="icon" href="/favicon.ico" sizes="any" />
+        <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
+        <link rel="icon" type="image/png" sizes="16x16" href="/favicon-16x16.png" />
       </head>
       <body className="min-h-screen bg-warm-50">
         <Script src="https://checkout.razorpay.com/v1/checkout.js" />
