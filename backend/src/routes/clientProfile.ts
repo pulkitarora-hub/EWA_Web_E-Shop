@@ -138,6 +138,37 @@ router.get("/my-notes/:id", authMiddleware(), async (req, res) => {
   return res.json({ note: stripPrivateFields(decryptNote(note)) });
 });
 
+// ─── Client Invoices (Razorpay payments) ────────────────────────────────────────
+router.get("/my-invoices", authMiddleware(), async (req, res) => {
+  const user = (req as any).user;
+
+  const payments = await prisma.payment.findMany({
+    where: { userId: user.id },
+    include: {
+      booking: {
+        include: {
+          session: { select: { id: true, title: true, host: true, startTime: true } },
+        },
+      },
+    },
+    orderBy: { createdAt: "desc" },
+  });
+
+  const invoices = payments.map((p) => ({
+    id: p.id,
+    razorpayPaymentId: p.razorpayPaymentId,
+    status: p.status,
+    amount: p.booking.amount,
+    currency: p.booking.currency,
+    paidAt: p.booking.paidAt,
+    sessionTitle: p.booking.session?.title,
+    sessionHost: p.booking.session?.host,
+    sessionDate: p.booking.session?.startTime,
+    createdAt: p.createdAt,
+  }));
+
+  return res.json({ invoices });
+});
 
 // ─── Client Dashboard ─────────────────────────────────────────────────────────
 router.get("/client/dashboard", authMiddleware(), async (req, res) => {

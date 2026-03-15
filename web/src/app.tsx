@@ -13,8 +13,10 @@ import { MyBookings } from "./features/bookings/MyBookings";
 import { TherapistDashboard } from "./features/therapist/TherapistDashboard";
 import { MyTherapyTimeline } from "./features/therapist/MyTherapyTimeline";
 import { ClientDashboard } from "./features/client/ClientDashboard";
+import { Invoices } from "./features/client/Invoices";
+import { MyNotes } from "./features/client/MyNotes";
 import { PWAInstallPrompt } from "./components/PWAInstallPrompt";
-type View = "dashboard" | "sessions" | "bookings" | "profile" | "admin" | "therapist" | "timeline";
+type View = "dashboard" | "sessions" | "bookings" | "profile" | "admin" | "therapist" | "timeline" | "invoices" | "notes";
 
 function getDefaultViewForRole(user: User): View {
   switch (user.role) {
@@ -49,11 +51,13 @@ function Navbar({
     { key: "sessions", label: "Sessions" },
     { key: "bookings", label: "My Bookings" },
     { key: "timeline", label: "My Journey" },
+    { key: "notes", label: "My Notes", clientOnly: true },
+    { key: "invoices", label: "Invoices", clientOnly: true },
   ];
   
   // Filter and order nav items based on user role
   const navItems = baseNavItems.filter((item) => {
-    if (item.adminOnly && !user.isAdmin && user.role !== "ADMIN") return false;
+    if (item.adminOnly && user.role !== "ADMIN") return false;
     if (item.therapistOnly && user.role !== "THERAPIST") return false;
     if (item.clientOnly && user.role !== "CLIENT") return false;
     return true;
@@ -275,8 +279,8 @@ export function App() {
       <main className="max-w-5xl mx-auto px-4 sm:px-6 py-8">
         {activeView === "therapist" && user.role === "THERAPIST" ? (
           <TherapistDashboard token={token} userName={user.name || ""} />
-        ) : activeView === "admin" && (user.isAdmin || user.role === "ADMIN") ? (
-          <AdminDashboard isAdmin={user.isAdmin} token={token} />
+        ) : activeView === "admin" && user.role === "ADMIN" ? (
+          <AdminDashboard isAdmin={true} token={token} />
         ) : activeView === "timeline" ? (
           <MyTherapyTimeline token={token} />
         ) : activeView === "bookings" ? (
@@ -299,6 +303,10 @@ export function App() {
               setSelectedSession(null);
             }}
           />
+        ) : activeView === "invoices" && user.role === "CLIENT" ? (
+          <Invoices token={token} />
+        ) : activeView === "notes" && user.role === "CLIENT" ? (
+          <MyNotes token={token} />
         ) : (
           <>
             {selectedSession ? (

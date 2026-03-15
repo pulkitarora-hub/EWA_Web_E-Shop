@@ -230,10 +230,15 @@ export function ClientDashboard({ token, userName, onNavigate }: Props) {
               <p className="text-2xl font-bold text-warm-900">{data.journey.completedSessions}</p>
               <p className="text-sm text-warm-500">Sessions Completed</p>
             </div>
-            <div className="p-4 bg-warm-50 rounded-lg text-center">
+            <button
+              type="button"
+              onClick={() => onNavigate("notes")}
+              className="p-4 bg-warm-50 rounded-lg text-center hover:bg-warm-100 transition-colors cursor-pointer border-0 w-full"
+            >
               <p className="text-2xl font-bold text-warm-900">{data.journey.sharedNotesCount}</p>
               <p className="text-sm text-warm-500">Session Notes</p>
-            </div>
+              <p className="text-xs text-brand-600 mt-1 font-medium">View My Notes →</p>
+            </button>
             <div className="p-4 bg-warm-50 rounded-lg text-center">
               <p className="text-2xl font-bold text-warm-900">
                 {data.journey.moodTrend.length > 0
@@ -322,13 +327,27 @@ export function ClientDashboard({ token, userName, onNavigate }: Props) {
               <p className="text-warm-500 text-sm">
                 Session notes will appear here after your therapist shares them with you.
               </p>
+              <button
+                onClick={() => onNavigate("notes")}
+                className="mt-3 text-sm text-brand-600 hover:text-brand-700 font-medium"
+              >
+                View My Notes →
+              </button>
             </div>
           )}
+          <div className="mt-4 pt-4 border-t border-warm-100">
+            <button
+              onClick={() => onNavigate("notes")}
+              className="text-sm text-brand-600 hover:text-brand-700 font-medium"
+            >
+              View all session notes & homework →
+            </button>
+          </div>
         </div>
       </div>
 
       {/* Quick Actions */}
-      <div className="grid sm:grid-cols-2 gap-4">
+      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-4">
         <button
           onClick={() => onNavigate("sessions")}
           className="flex items-center justify-center gap-3 p-5 bg-brand-600 text-white rounded-xl hover:bg-brand-700 transition-colors"
@@ -346,6 +365,24 @@ export function ClientDashboard({ token, userName, onNavigate }: Props) {
             <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 5H7a2 2 0 00-2 2v12a2 2 0 002 2h10a2 2 0 002-2V7a2 2 0 00-2-2h-2M9 5a2 2 0 002 2h2a2 2 0 002-2M9 5a2 2 0 012-2h2a2 2 0 012 2" />
           </svg>
           <span className="font-medium">View My Journey</span>
+        </button>
+        <button
+          onClick={() => onNavigate("notes")}
+          className="flex items-center justify-center gap-3 p-5 bg-white text-warm-700 rounded-xl border border-warm-200 hover:bg-warm-50 transition-colors"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M9 12h6m-6 4h6m2 5H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+          </svg>
+          <span className="font-medium">My Notes</span>
+        </button>
+        <button
+          onClick={() => onNavigate("invoices")}
+          className="flex items-center justify-center gap-3 p-5 bg-white text-warm-700 rounded-xl border border-warm-200 hover:bg-warm-50 transition-colors"
+        >
+          <svg className="w-6 h-6" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+            <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M17 9V7a2 2 0 00-2-2H5a2 2 0 00-2 2v6a2 2 0 002 2h2m2 4h10a2 2 0 002-2v-6a2 2 0 00-2-2H9a2 2 0 00-2 2v6a2 2 0 002 2zm-12-2h.01" />
+          </svg>
+          <span className="font-medium">Invoices</span>
         </button>
       </div>
     </div>

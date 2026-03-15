@@ -11,8 +11,8 @@ if (!phone) {
 async function main() {
   const user = await prisma.user.upsert({
     where: { phone },
-    create: { phone, isAdmin: true },
-    update: { isAdmin: true },
+    create: { phone, isAdmin: true, role: "ADMIN" },
+    update: { isAdmin: true, role: "ADMIN" },
   });
   console.log(`Admin set for user ${user.id} (${user.phone})`);
 }

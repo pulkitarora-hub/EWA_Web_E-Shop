@@ -542,6 +542,35 @@ export async function deleteAdminPromoCode(token: string, id: string) {
   });
 }
 
+export type AdminSession = {
+  id: string;
+  title: string;
+  host: string;
+  startTime: string;
+  price: number;
+  currency: string;
+  tidycalUrl?: string | null;
+  therapistId?: string | null;
+  therapist?: { user?: { name?: string | null; email?: string | null } } | null;
+};
+
+export async function fetchAdminSessions(token: string) {
+  return request<{ sessions: AdminSession[] }>("/admin/sessions", { headers: authHeaders(token) });
+}
+
+export async function createAdminSession(token: string, data: { title: string; host: string; startTime?: string; price?: number; currency?: string; tidycalUrl?: string; therapistId?: string }) {
+  return request<{ session: AdminSession }>("/admin/sessions", { method: "POST", headers: authHeaders(token), body: JSON.stringify(data) });
+}
+
+export async function updateAdminSession(token: string, id: string, data: { title?: string; host?: string; startTime?: string; price?: number; currency?: string; tidycalUrl?: string; therapistId?: string }) {
+  return request<{ session: AdminSession }>(`/admin/sessions/${id}`, { method: "PATCH", headers: authHeaders(token), body: JSON.stringify(data) });
+}
+
+export async function deleteAdminSession(token: string, id: string) {
+  return request<{ success: boolean }>(`/admin/sessions/${id}`, { method: "DELETE", headers: authHeaders(token) });
+}
+
+
 // ─── Therapist Types ──────────────────────────────────────────────────────────
 
 export type TherapyNote = {
@@ -862,6 +891,46 @@ export type ClientDashboardData = {
 
 export async function fetchClientDashboard(token: string) {
   return request<ClientDashboardData>("/client/dashboard", {
+    headers: authHeaders(token),
+  });
+}
+
+export type ClientInvoice = {
+  id: string;
+  razorpayPaymentId: string;
+  status: string;
+  amount: number;
+  currency: string;
+  paidAt: string | null;
+  sessionTitle: string | null;
+  sessionHost: string | null;
+  sessionDate: string | null;
+  createdAt: string;
+};
+
+export async function fetchClientInvoices(token: string) {
+  return request<{ invoices: ClientInvoice[] }>("/my-invoices", {
+    headers: authHeaders(token),
+  });
+}
+
+export type ClientNote = {
+  id: string;
+  visibility: string;
+  sessionSummary?: string | null;
+  actionItems?: string | null;
+  nextSessionFocus?: string | null;
+  interventions?: string | null;
+  keyThemes?: string[];
+  emotionalState?: string | null;
+  moodRating?: number | null;
+  sharedAt?: string | null;
+  createdAt: string;
+  booking?: { session?: { title?: string; startTime?: string } };
+};
+
+export async function fetchClientMyNotes(token: string) {
+  return request<{ notes: ClientNote[] }>("/my-notes", {
     headers: authHeaders(token),
   });
 }

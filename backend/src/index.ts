@@ -16,7 +16,9 @@ import therapistRoutes from "./routes/therapist.js";
 import notesRoutes from "./routes/notes.js";
 import clientProfileRoutes from "./routes/clientProfile.js";
 import adminTherapistRoutes from "./routes/adminTherapist.js";
+import adminSessionsRoutes from "./routes/adminSessions.js";
 import zoomRoutes from "./routes/zoom.js";
+import { adminMiddleware } from "./middleware/auth.js";
 import { createZoomMeetingForBooking, getZoomConfigStatus } from "./services/zoom.js";
 import { syncTidyCalBookings, getTidyCalStatus } from "./services/tidycal.js";
 
@@ -191,16 +193,6 @@ function authMiddleware() {
       return res.status(401).json({ error: "unauthorized" });
     }
     (req as any).user = user;
-    next();
-  };
-}
-
-function adminMiddleware() {
-  return (req: express.Request, res: express.Response, next: express.NextFunction) => {
-    const user = (req as any).user;
-    if (!user?.isAdmin) {
-      return res.status(403).json({ error: "admin_required" });
-    }
     next();
   };
 }
@@ -1965,6 +1957,7 @@ app.use(therapistRoutes);
 app.use(notesRoutes);
 app.use(clientProfileRoutes);
 app.use(adminTherapistRoutes);
+app.use(adminSessionsRoutes);
 app.use(zoomRoutes);
 
 const port = Number(process.env.PORT || 4000);

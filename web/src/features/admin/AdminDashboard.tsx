@@ -20,10 +20,15 @@ import {
   saveZoomConfig,
   testZoomConnection,
   ZoomConfigStatus,
+  fetchAdminSessions,
+  createAdminSession,
+  updateAdminSession,
+  deleteAdminSession,
+  AdminSession,
 } from "../../lib/api";
 
 type Props = { isAdmin: boolean; token: string };
-type Tab = "overview" | "users" | "bookings" | "therapists" | "promos" | "analytics" | "zoom";
+type Tab = "overview" | "users" | "bookings" | "therapists" | "sessions" | "promos" | "analytics" | "zoom";
 
 export function AdminDashboard({ isAdmin, token }: Props) {
   const [activeTab, setActiveTab] = useState<Tab>("overview");
@@ -53,6 +58,11 @@ export function AdminDashboard({ isAdmin, token }: Props) {
   const [zoomSaving, setZoomSaving] = useState(false);
   const [zoomTesting, setZoomTesting] = useState(false);
   const [zoomTestResult, setZoomTestResult] = useState<{ success: boolean; error?: string } | null>(null);
+  const [sessions, setSessions] = useState<AdminSession[]>([]);
+  const [sessionsLoading, setSessionsLoading] = useState(false);
+  const [showSessionForm, setShowSessionForm] = useState(false);
+  const [editingSession, setEditingSession] = useState<AdminSession | null>(null);
+  const [sessionForm, setSessionForm] = useState({ title: "", host: "", startTime: "", price: "", currency: "INR", tidycalUrl: "", therapistId: "" });
 
   useEffect(() => { loadOverview(); }, []);
 
@@ -136,6 +146,70 @@ export function AdminDashboard({ isAdmin, token }: Props) {
     setPromosLoading(false);
   }
 
+  async function loadSessions() {
+    setSessionsLoading(true);
+    try { const res = await fetchAdminSessions(token); setSessions(res.sessions); }
+    catch (err) { console.error("Sessions error:", err); }
+    setSessionsLoading(false);
+  }
+
+  function openSessionForm(session?: AdminSession | null) {
+    if (session) {
+      setEditingSession(session);
+      setSessionForm({
+        title: session.title,
+        host: session.host,
+        startTime: session.startTime ? new Date(session.startTime).toISOString().slice(0, 16) : "",
+        price: String(session.price),
+        currency: session.currency || "INR",
+        tidycalUrl: session.tidycalUrl || "",
+        therapistId: session.therapistId || "",
+      });
+    } else {
+      setEditingSession(null);
+      setSessionForm({ title: "", host: "", startTime: "", price: "", currency: "INR", tidycalUrl: "", therapistId: "" });
+    }
+    setShowSessionForm(true);
+  }
+
+  async function handleSaveSession() {
+    if (!sessionForm.title || !sessionForm.host) return;
+    try {
+      const payload = {
+        title: sessionForm.title.trim(),
+        host: sessionForm.host.trim(),
+        startTime: sessionForm.startTime || undefined,
+        price: sessionForm.price ? Number(sessionForm.price) : 0,
+        currency: sessionForm.currency || "INR",
+        tidycalUrl: sessionForm.tidycalUrl || undefined,
+        therapistId: sessionForm.therapistId || undefined,
+      };
+      if (editingSession) {
+        await updateAdminSession(token, editingSession.id, payload);
+      } else {
+        await createAdminSession(token, payload);
+      }
+      setShowSessionForm(false);
+      setEditingSession(null);
+      setSessionForm({ title: "", host: "", startTime: "", price: "", currency: "INR", tidycalUrl: "", therapistId: "" });
+      loadSessions();
+    } catch (err) { console.error("Save session error:", err); }
+  }
+
+  function closeSessionForm() {
+    setShowSessionForm(false);
+    setEditingSession(null);
+    setSessionForm({ title: "", host: "", startTime: "", price: "", currency: "INR", tidycalUrl: "", therapistId: "" });
+  }
+
+  async function handleDeleteSession(id: string) {
+    if (!confirm("Delete this session? Bookings may be affected.")) return;
+    try {
+      await deleteAdminSession(token, id);
+      loadSessions();
+    } catch (err) { console.error("Delete session error:", err); }
+  }
+
   async function handleViewUser(userId: string) {
     setDetailLoading(true);
     try { const res = await fetchAdminUserDetail(token, userId); setDetailUser(res); }
@@ -180,6 +254,7 @@ export function AdminDashboard({ isAdmin, token }: Props) {
     if (activeTab === "users") loadUsers();
     if (activeTab === "bookings") loadBookings();
     if (activeTab === "therapists") loadTherapists();
+    if (activeTab === "sessions") { loadSessions(); loadTherapists(); }
     if (activeTab === "promos") loadPromos();
     if (activeTab === "analytics") loadOverview();
     if (activeTab === "zoom") loadZoom();
@@ -189,6 +264,7 @@ export function AdminDashboard({ isAdmin, token }: Props) {
   const tabs: { key: Tab; label: string }[] = [
     { key: "overview", label: "Overview" }, { key: "users", label: "Users" },
     { key: "bookings", label: "Bookings" }, { key: "therapists", label: "Therapists" },
+    { key: "sessions", label: "Sessions" },
     { key: "promos", label: "Promo Codes" }, { key: "analytics", label: "Analytics" },
     { key: "zoom", label: "Zoom" },
   ];
@@ -228,6 +304,7 @@ export function AdminDashboard({ isAdmin, token }: Props) {
       {activeTab === "users" && <UsersContent users={users} loading={usersLoading} search={userSearch} onSearchChange={setUserSearch} page={usersPage} total={usersTotal} onPageChange={setUsersPage} onViewUser={handleViewUser} />}
       {activeTab === "bookings" && <BookingsContent bookings={bookings} loading={bookingsLoading} />}
       {activeTab === "therapists" && <TherapistsContent therapists={therapists} loading={therapistsLoading} showAdd={showAddTherapist} setShowAdd={setShowAddTherapist} newTherapist={newTherapist} setNewTherapist={setNewTherapist} onAdd={handleCreateTherapist} />}
+      {activeTab === "sessions" && <SessionsContent sessions={sessions} loading={sessionsLoading} showForm={showSessionForm} setShowForm={setShowSessionForm} editingSession={editingSession} form={sessionForm} setForm={setSessionForm} onOpenForm={openSessionForm} onSave={handleSaveSession} onDelete={handleDeleteSession} onCloseForm={closeSessionForm} therapists={therapists} />}
       {activeTab === "promos" && <PromosContent promoCodes={promoCodes} loading={promosLoading} showForm={showPromoForm} setShowForm={setShowPromoForm} form={promoForm} setForm={setPromoForm} onCreate={handleCreatePromo} onToggle={handleTogglePromo} onDelete={handleDeletePromo} />}
       {activeTab === "analytics" && <AnalyticsContent analytics={analytics} loading={loading} />}
       {activeTab === "zoom" && <ZoomContent config={zoomConfig} loading={zoomLoading} form={zoomForm} setForm={setZoomForm} onSave={handleSaveZoomConfig} saving={zoomSaving} onTest={handleTestZoom} testing={zoomTesting} testResult={zoomTestResult} />}
@@ -384,6 +461,72 @@ function TherapistsContent({ therapists, loading, showAdd, setShowAdd, newTherap
     </div>
   );
 }
+
+
+function SessionsContent({ sessions, loading, showForm, setShowForm, editingSession, form, setForm, onOpenForm, onSave, onDelete, onCloseForm, therapists }: any) {
+  return (
+    <div className="space-y-4">
+      <div className="flex justify-between items-center">
+        <h2 className="font-semibold text-warm-900">Sessions ({sessions.length})</h2>
+        <button onClick={() => onOpenForm(null)} className="px-4 py-2 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors">+ Add Session</button>
+      </div>
+      {showForm && (
+        <div className="bg-white rounded-xl shadow-sm p-5 space-y-4">
+          <div className="grid grid-cols-2 gap-4">
+            <input placeholder="Title *" value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} className="rounded-lg border border-warm-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            <input placeholder="Host *" value={form.host} onChange={(e) => setForm({ ...form, host: e.target.value })} className="rounded-lg border border-warm-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            <input type="datetime-local" placeholder="Start time" value={form.startTime} onChange={(e) => setForm({ ...form, startTime: e.target.value })} className="rounded-lg border border-warm-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            <input placeholder="Price" type="number" value={form.price} onChange={(e) => setForm({ ...form, price: e.target.value })} className="rounded-lg border border-warm-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            <input placeholder="Currency" value={form.currency} onChange={(e) => setForm({ ...form, currency: e.target.value })} className="rounded-lg border border-warm-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+            <input placeholder="TidyCal URL" value={form.tidycalUrl} onChange={(e) => setForm({ ...form, tidycalUrl: e.target.value })} className="rounded-lg border border-warm-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400" />
+          </div>
+          {therapists?.length > 0 && (
+            <select value={form.therapistId} onChange={(e) => setForm({ ...form, therapistId: e.target.value })} className="rounded-lg border border-warm-200 px-4 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-brand-400 w-full">
+              <option value="">No therapist</option>
+              {therapists.map((t: any) => (
+                <option key={t.id} value={t.therapistProfile?.id || ""}>{t.name} ({t.email})</option>
+              ))}
+            </select>
+          )}
+          <div className="flex gap-2">
+            <button onClick={onSave} disabled={!form.title || !form.host} className="px-5 py-2.5 bg-brand-500 text-white rounded-lg text-sm font-medium hover:bg-brand-600 transition-colors disabled:opacity-50">{editingSession ? "Update" : "Create"} Session</button>
+            <button onClick={() => onCloseForm?.()} className="px-5 py-2.5 bg-warm-100 text-warm-700 rounded-lg text-sm font-medium hover:bg-warm-200">Cancel</button>
+          </div>
+        </div>
+      )}
+      {loading ? <div className="flex justify-center py-16"><div className="w-8 h-8 border-3 border-warm-200 border-t-slate-800 rounded-full animate-spin" /></div> : sessions.length === 0 ? <div className="bg-white rounded-xl p-12 text-center text-warm-500">No sessions yet</div> : (
+        <div className="bg-white rounded-xl shadow-sm overflow-hidden">
+          <table className="w-full">
+            <thead className="bg-warm-50 text-left">
+              <tr>
+                <th className="px-4 py-3 text-xs font-semibold text-warm-600 uppercase">Title</th>
+                <th className="px-4 py-3 text-xs font-semibold text-warm-600 uppercase">Host</th>
+                <th className="px-4 py-3 text-xs font-semibold text-warm-600 uppercase">Price</th>
+                <th className="px-4 py-3 text-xs font-semibold text-warm-600 uppercase">Therapist</th>
+                <th className="px-4 py-3"></th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-warm-100">
+              {sessions.map((s: any) => (
+                <tr key={s.id} className="hover:bg-warm-50 transition-colors">
+                  <td className="px-4 py-3 font-medium text-warm-900 text-sm">{s.title}</td>
+                  <td className="px-4 py-3 text-sm text-warm-700">{s.host}</td>
+                  <td className="px-4 py-3 text-sm text-warm-700">{s.currency} {s.price}</td>
+                  <td className="px-4 py-3 text-sm text-warm-500">{s.therapist?.user?.name || "—"}</td>
+                  <td className="px-4 py-3 flex gap-2">
+                    <button onClick={() => onOpenForm(s)} className="text-sm text-brand-600 hover:text-brand-700 font-medium">Edit</button>
+                    <button onClick={() => onDelete(s.id)} className="text-sm text-red-500 hover:text-red-700">Delete</button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      )}
+    </div>
+  );
+}
+
 
 function PromosContent({ promoCodes, loading, showForm, setShowForm, form, setForm, onCreate, onToggle, onDelete }: any) {
   return (

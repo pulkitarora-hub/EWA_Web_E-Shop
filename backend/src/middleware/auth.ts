@@ -41,7 +41,7 @@ export function authMiddleware() {
 export function adminMiddleware() {
   return (req: express.Request, res: express.Response, next: express.NextFunction) => {
     const user = (req as any).user;
-    if (!user?.isAdmin && user?.role !== "ADMIN") {
+    if (user?.role !== "ADMIN") {
       return res.status(403).json({ error: "admin_required" });
     }
     next();
