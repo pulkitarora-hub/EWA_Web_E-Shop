@@ -1,0 +1,117 @@
+@import "tailwindcss";
+
+/* Evolve with Avadhi — design tokens from brand palette */
+:root {
+  --eva-royal: #6c49b6;
+  --eva-lilac: #dcc8ee;
+  --eva-lavender: #906ceb;
+  --eva-periwinkle: #bbbbf1;
+  --eva-lavender-white: #e6e6fa;
+  --eva-gold: #f5b841;
+  --eva-teal: #3fd0c9;
+  --eva-coral: #e27d72;
+  --eva-cream: #f8f5f0;
+  --eva-midnight: #2e2b5f;
+  --eva-peach: #ffb6a9;
+  --eva-mint: #b6e2d3;
+  --eva-violet-deep: #563796;
+  --eva-magenta-soft: #efa5f6;
+  --eva-orb-a: #6c49bc;
+  --eva-orb-b: #a549bc;
+
+  --background: var(--eva-cream);
+  --foreground: var(--eva-midnight);
+  --muted: color-mix(in srgb, var(--eva-midnight) 65%, white);
+}
+
+@theme inline {
+  --color-background: var(--background);
+  --color-foreground: var(--foreground);
+  --color-muted: var(--muted);
+
+  --color-eva-royal: var(--eva-royal);
+  --color-eva-lilac: var(--eva-lilac);
+  --color-eva-lavender: var(--eva-lavender);
+  --color-eva-periwinkle: var(--eva-periwinkle);
+  --color-eva-lavender-white: var(--eva-lavender-white);
+  --color-eva-gold: var(--eva-gold);
+  --color-eva-teal: var(--eva-teal);
+  --color-eva-coral: var(--eva-coral);
+  --color-eva-cream: var(--eva-cream);
+  --color-eva-midnight: var(--eva-midnight);
+  --color-eva-peach: var(--eva-peach);
+  --color-eva-mint: var(--eva-mint);
+  --color-eva-violet-deep: var(--eva-violet-deep);
+  --color-eva-magenta-soft: var(--eva-magenta-soft);
+
+  --font-sans: var(--font-dm-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-display: var(--font-fraunces), ui-serif, Georgia, "Apple Color Emoji",
+    "Segoe UI Emoji", serif;
+
+  --shadow-eva-soft: 0 24px 80px -20px color-mix(in srgb, var(--eva-royal) 35%, transparent);
+  --shadow-eva-glow: 0 0 0 1px color-mix(in srgb, white 40%, transparent),
+    0 18px 50px -12px color-mix(in srgb, var(--eva-lavender) 45%, transparent);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+body {
+  @apply bg-background text-foreground font-sans antialiased;
+}
+
+/* Hero & decorative gradients */
+.eva-gradient-hero {
+  background: linear-gradient(
+    135deg,
+    var(--eva-violet-deep) 0%,
+    var(--eva-royal) 42%,
+    var(--eva-magenta-soft) 100%
+  );
+}
+
+.eva-gradient-orb {
+  background: radial-gradient(
+    circle at 30% 30%,
+    var(--eva-orb-a) 0%,
+    var(--eva-orb-b) 55%,
+    var(--eva-violet-deep) 100%
+  );
+}
+
+.eva-glass {
+  background: color-mix(in srgb, white 12%, transparent);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+}
+
+.eva-mesh {
+  background-color: var(--eva-midnight);
+  background-image: radial-gradient(
+      ellipse 80% 60% at 20% 20%,
+      color-mix(in srgb, var(--eva-lavender) 45%, transparent),
+      transparent 55%
+    ),
+    radial-gradient(
+      ellipse 70% 50% at 85% 30%,
+      color-mix(in srgb, var(--eva-teal) 28%, transparent),
+      transparent 50%
+    ),
+    radial-gradient(
+      ellipse 60% 45% at 50% 95%,
+      color-mix(in srgb, var(--eva-coral) 22%, transparent),
+      transparent 55%
+    );
+}
+
+/* Subtle section divider */
+.eva-divider {
+  height: 1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--eva-lavender) 45%, transparent),
+    transparent
+  );
+}

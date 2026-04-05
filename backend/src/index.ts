@@ -18,6 +18,7 @@ import clientProfileRoutes from "./routes/clientProfile.js";
 import adminTherapistRoutes from "./routes/adminTherapist.js";
 import adminSessionsRoutes from "./routes/adminSessions.js";
 import zoomRoutes from "./routes/zoom.js";
+import shopRoutes from "./routes/shop.js";
 import { adminMiddleware } from "./middleware/auth.js";
 import { createZoomMeetingForBooking, getZoomConfigStatus } from "./services/zoom.js";
 import { syncTidyCalBookings, getTidyCalStatus } from "./services/tidycal.js";
@@ -1790,6 +1791,43 @@ async function autoSeed() {
     });
     console.log("Sessions seeded successfully.");
   }
+
+  const shopCount = await prisma.shopProduct.count();
+  if (shopCount === 0) {
+    console.log("No shop products — seeding catalog...");
+    await prisma.shopProduct.createMany({
+      data: [
+        {
+          slug: "intro-session",
+          name: "Intro consultation (60 min)",
+          description:
+            "A full session to understand your goals and map a path forward — individuals or couples.",
+          priceInr: 2500,
+          stock: null,
+          active: true,
+        },
+        {
+          slug: "therapy-package",
+          name: "Therapy bundle (8 sessions)",
+          description:
+            "Structured support for sustained change — best for medium-term goals.",
+          priceInr: 20000,
+          stock: null,
+          active: true,
+        },
+        {
+          slug: "sound-healing-intro",
+          name: "Sound healing circle — intro",
+          description:
+            "Experience Nada Yoga–inspired sound work in a guided group setting.",
+          priceInr: 1500,
+          stock: 40,
+          active: true,
+        },
+      ],
+    });
+    console.log("Shop products seeded.");
+  }
 }
 
 // ─── Session Reminders (cron) ────────────────────────────────────────────────
@@ -1959,6 +1997,7 @@ app.use(clientProfileRoutes);
 app.use(adminTherapistRoutes);
 app.use(adminSessionsRoutes);
 app.use(zoomRoutes);
+app.use(shopRoutes);
 
 const port = Number(process.env.PORT || 4000);
 app.listen(port, () => {
